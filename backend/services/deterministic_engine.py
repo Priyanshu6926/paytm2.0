@@ -125,6 +125,7 @@ def log_business_event(
         "CFO_ALERT",
         "CMO_GROWTH",
         "SETTLEMENT",
+        "SYSTEM_STARTUP",
     }
     if event_category not in valid_categories:
         raise ValueError(
