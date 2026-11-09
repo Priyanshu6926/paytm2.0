@@ -1,12 +1,41 @@
 """
 KiranaOS Deterministic Memory & Calculation Engine
 Enforces PRD §2 "Law of Zero LLM Math" and "Law of Append-Only Immutability".
-All financial arithmetic, ledger updates, reversals, and audit logs are computed deterministically.
+All financial arithmetic, ledger updates, reversals, identity disambiguation,
+and audit logs are computed deterministically.
 """
 
+from datetime import datetime
 import json
 import sqlite3
 from typing import Any, Dict, List, Optional
+
+
+def format_last_visit(last_visit: Optional[str]) -> str:
+    """Helper to convert a last_visit timestamp or string into friendly text."""
+    if not last_visit:
+        return "No prior visit"
+    visit_str = str(last_visit).strip()
+    lower_str = visit_str.lower()
+    if "ago" in lower_str or "today" in lower_str or "yesterday" in lower_str:
+        return visit_str
+    try:
+        cleaned = visit_str.replace("T", " ").split(".")[0].strip()
+        if len(cleaned) == 10:
+            dt = datetime.strptime(cleaned, "%Y-%m-%d")
+        else:
+            dt = datetime.strptime(cleaned, "%Y-%m-%d %H:%M:%S")
+
+        diff = datetime.now() - dt
+        days = diff.days
+        if days <= 0:
+            return "Today"
+        elif days == 1:
+            return "1 day ago"
+        else:
+            return f"{days} days ago"
+    except Exception:
+        return visit_str
 
 
 def calculate_customer_balance(conn: sqlite3.Connection, customer_id: int) -> Dict[str, Any]:
@@ -315,3 +344,171 @@ def reverse_ledger_entry(
         "balance": balance,
         "business_event_id": event_id,
     }
+
+
+def resolve_customer_identity(conn: sqlite3.Connection, query_name: str) -> Dict[str, Any]:
+    """
+    Customer lookup and disambiguation guard per PRD §4 (FR-02), §7.1, and D-03.
+    Searches customers table for exact name matches, JSON aliases match, or substring match.
+
+    Returns:
+      - If 1 match:
+          {"status": "EXACT_MATCH", "customer": {...}, "current_udhaar": float, "last_visit_date": ...}
+      - If 0 matches:
+          {"status": "NOT_FOUND", "query_name": query_name}
+      - If >1 matches:
+          {"status": "NEEDS_DISAMBIGUATION", "query_name": query_name, "ambiguity_reason": ...,
+           "candidates": [...], "why_am_i_seeing_this": ..., "spoken_prompt_hi": ...}
+    """
+    clean_query = query_name.strip() if query_name else ""
+    if not clean_query:
+        return {
+            "status": "NOT_FOUND",
+            "query_name": query_name,
+        }
+
+    rows = conn.execute(
+        """
+        SELECT id, name, aliases, phone, preferred_language, regular_cycle_days, last_visit_date
+        FROM customers;
+        """
+    ).fetchall()
+
+    lower_query = clean_query.lower()
+
+    # Tier 1: Exact matches (name or alias)
+    exact_matches = []
+    for r in rows:
+        name_str = (r["name"] or "").strip()
+        aliases_list = []
+        if r["aliases"]:
+            try:
+                aliases_list = json.loads(r["aliases"])
+            except Exception:
+                aliases_list = []
+
+        if lower_query == name_str.lower():
+            exact_matches.append((r, aliases_list))
+            continue
+
+        for alias in aliases_list:
+            if lower_query == str(alias).strip().lower():
+                exact_matches.append((r, aliases_list))
+                break
+
+    if exact_matches:
+        matched_candidates = exact_matches
+    else:
+        # Tier 2: Substring / Partial match on name or aliases
+        substring_matches = []
+        for r in rows:
+            name_str = (r["name"] or "").strip()
+            aliases_list = []
+            if r["aliases"]:
+                try:
+                    aliases_list = json.loads(r["aliases"])
+                except Exception:
+                    aliases_list = []
+
+            # Check if query is in name or name is in query
+            if lower_query in name_str.lower() or name_str.lower() in lower_query:
+                substring_matches.append((r, aliases_list))
+                continue
+
+            # Check aliases
+            alias_match = False
+            for alias in aliases_list:
+                alias_lower = str(alias).strip().lower()
+                if lower_query in alias_lower or alias_lower in lower_query:
+                    substring_matches.append((r, aliases_list))
+                    alias_match = True
+                    break
+            if alias_match:
+                continue
+
+        matched_candidates = substring_matches
+
+    # 1. Zero matches
+    if len(matched_candidates) == 0:
+        return {
+            "status": "NOT_FOUND",
+            "query_name": query_name,
+        }
+
+    # 2. Exactly one match -> clean resolution
+    if len(matched_candidates) == 1:
+        c_row, c_aliases = matched_candidates[0]
+        customer_id = c_row["id"]
+        balance = calculate_customer_balance(conn, customer_id)
+        return {
+            "status": "EXACT_MATCH",
+            "customer": {
+                "id": customer_id,
+                "name": c_row["name"],
+                "phone": c_row["phone"],
+                "preferred_language": c_row["preferred_language"],
+                "aliases": c_aliases,
+                "regular_cycle_days": c_row["regular_cycle_days"],
+                "last_visit_date": c_row["last_visit_date"],
+            },
+            "current_udhaar": balance["net_outstanding_balance"],
+            "last_visit_date": c_row["last_visit_date"],
+        }
+
+    # 3. Multiple matches -> NEEDS_DISAMBIGUATION guard halts auto-write
+    candidate_cards = []
+    for c_row, _ in matched_candidates:
+        c_id = c_row["id"]
+        bal = calculate_customer_balance(conn, c_id)
+        candidate_cards.append({
+            "customer_id": c_id,
+            "name": c_row["name"],
+            "phone": c_row["phone"],
+            "current_udhaar": bal["net_outstanding_balance"],
+            "last_visit": format_last_visit(c_row["last_visit_date"]),
+        })
+
+    hindi_numbers = {
+        1: "ek",
+        2: "do",
+        3: "teen",
+        4: "chaar",
+        5: "paanch",
+        6: "chhah",
+        7: "saat",
+        8: "aath",
+        9: "nau",
+        10: "das",
+    }
+    count = len(candidate_cards)
+    num_hi = hindi_numbers.get(count, str(count))
+    cand_names_str = " ya ".join(c["name"] for c in candidate_cards)
+    spoken_prompt_hi = f"Dukaan mein {num_hi} {clean_query} hain: {cand_names_str}? Kiske khate mein likhoon?"
+
+    ambiguity_reason = f"Found {count} customers matching '{clean_query}' in shop memory."
+    why_am_i_seeing_this = "KiranaOS blocks blind writes when customer names overlap."
+
+    # Audit log the disambiguation guard trigger per D-03
+    log_business_event(
+        conn=conn,
+        event_category="LEDGER",
+        summary_text=f"Identity disambiguation triggered for '{clean_query}': {count} candidates found",
+        evidence={
+            "query_name": query_name,
+            "clean_query": clean_query,
+            "candidate_count": count,
+            "candidates": candidate_cards,
+            "ambiguity_reason": ambiguity_reason,
+        },
+        actor="SYSTEM_GUARD",
+    )
+
+    return {
+        "status": "NEEDS_DISAMBIGUATION",
+        "query_name": query_name,
+        "ambiguity_reason": ambiguity_reason,
+        "candidates": candidate_cards,
+        "why_am_i_seeing_this": why_am_i_seeing_this,
+        "spoken_prompt_hi": spoken_prompt_hi,
+    }
+
