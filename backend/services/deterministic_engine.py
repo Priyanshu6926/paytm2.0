@@ -254,6 +254,115 @@ def record_ledger_entry(
     }
 
 
+def add_credit_entry(
+    conn: sqlite3.Connection,
+    customer_id: int,
+    amount: float,
+    source_utterance: Optional[str] = None,
+    provider_ref: Optional[str] = None,
+    actor: str = "MERCHANT_APPROVED",
+) -> Dict[str, Any]:
+    """Convenience helper to record an append-only CREDIT_UDHAAR entry."""
+    return record_ledger_entry(
+        conn=conn,
+        customer_id=customer_id,
+        entry_type="CREDIT_UDHAAR",
+        amount=amount,
+        payment_mode="UDHAAR",
+        provider_ref=provider_ref,
+        source_utterance=source_utterance,
+        actor=actor,
+    )
+
+
+def add_repayment_entry(
+    conn: sqlite3.Connection,
+    customer_id: int,
+    amount: float,
+    payment_mode: str = "CASH",
+    source_utterance: Optional[str] = None,
+    provider_ref: Optional[str] = None,
+    actor: str = "MERCHANT_APPROVED",
+) -> Dict[str, Any]:
+    """Convenience helper to record an append-only REPAYMENT_JAMA entry."""
+    return record_ledger_entry(
+        conn=conn,
+        customer_id=customer_id,
+        entry_type="REPAYMENT_JAMA",
+        amount=amount,
+        payment_mode=payment_mode,
+        provider_ref=provider_ref,
+        source_utterance=source_utterance,
+        actor=actor,
+    )
+
+
+def record_stock_event(
+    conn: sqlite3.Connection,
+    item_id: int,
+    event_type: str,
+    quantity_delta: int,
+    unit_cost: Optional[float] = None,
+    invoice_number: Optional[str] = None,
+    raw_transcript: Optional[str] = None,
+    actor: str = "MERCHANT_APPROVED",
+) -> Dict[str, Any]:
+    """
+    Appends an immutable stock event to stock_events and atomically adjusts
+    inventory_items.current_stock. Logs an INVENTORY audit row in business_events.
+    """
+    item = conn.execute("SELECT * FROM inventory_items WHERE id = ?;", (item_id,)).fetchone()
+    if item is None:
+        raise ValueError(f"Inventory item with ID {item_id} does not exist.")
+
+    cursor = conn.execute(
+        """
+        INSERT INTO stock_events (
+            item_id, event_type, quantity_delta, unit_cost, invoice_number, raw_transcript
+        ) VALUES (?, ?, ?, ?, ?, ?);
+        """,
+        (item_id, event_type, int(quantity_delta), unit_cost, invoice_number, raw_transcript),
+    )
+    event_id = cursor.lastrowid
+
+    # Update stock level safely
+    conn.execute(
+        "UPDATE inventory_items SET current_stock = MAX(0, current_stock + ?) WHERE id = ?;",
+        (int(quantity_delta), item_id),
+    )
+
+    updated_item = conn.execute("SELECT current_stock FROM inventory_items WHERE id = ?;", (item_id,)).fetchone()
+    new_stock = int(updated_item["current_stock"])
+
+    summary = f"Stock update for {item['sku_name']}: {quantity_delta:+d} ({event_type})"
+    biz_event_id = log_business_event(
+        conn=conn,
+        event_category="INVENTORY",
+        summary_text=summary,
+        evidence={
+            "stock_event_id": event_id,
+            "item_id": item_id,
+            "sku_name": item["sku_name"],
+            "event_type": event_type,
+            "quantity_delta": int(quantity_delta),
+            "new_stock": new_stock,
+            "actor": actor,
+        },
+        actor=actor,
+    )
+
+    conn.commit()
+
+    return {
+        "event_id": event_id,
+        "item_id": item_id,
+        "sku_name": item["sku_name"],
+        "quantity_delta": int(quantity_delta),
+        "new_stock": new_stock,
+        "business_event_id": biz_event_id,
+    }
+
+
 def reverse_ledger_entry(
     conn: sqlite3.Connection,
     entry_id: int,
