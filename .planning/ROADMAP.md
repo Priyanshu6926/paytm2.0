@@ -48,7 +48,14 @@ Plans:
   1. Spoken and typed Hinglish/Marathi shop commands parse into unconfirmed Proposal Cards with key terms biased dynamically from active SQLite customer and inventory tables.
   2. System synthesizes clear vernacular voice confirmations and explanations in Hindi (`hi-IN`) and Marathi (`mr-IN`) using Sarvam Bulbul v3.
   3. External voice API requests enforce a strict 6-second timeout and automatically fall back to authentic pre-recorded audio and transcripts without failing the user flow.
-**Plans**: TBD
+**Plans**: 2 plans
+
+Plans:
+**Wave 1**
+- [ ] 02-01-PLAN.md — Sarvam Engine Service with 6-Second Timeout & Local Synthetic Fallback (STT saaras:v4, TTS bulbul:v3, Translate, and resilient offline synthetic base64 audio generator)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+- [ ] 02-02-PLAN.md — Dynamic SQL Keyterm Biasing, Intent Parsing & Propose-Confirm Gateway (SQLite keyterm extraction, vernacular intent parsing with identity disambiguation, and FastAPI endpoints mounted at /api/v1/voice/*)
 
 ### Phase 3: AI CFO — Margin Defense & Settlement Reconciliation
 **Goal**: Guard thin kirana retail margins against distributor wholesale cost increases and demystify daily Paytm payout deductions down to ₹0.01.
@@ -94,7 +101,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. KiranaOS Deterministic Memory & Store Engine | 3/3 | Complete    | 2026-11-09 |
-| 2. Core Voice & Multimodal Gateway | 0/TBD | Not started | - |
+| 2. Core Voice & Multimodal Gateway | 0/2 | Not started | - |
 | 3. AI CFO — Margin Defense & Settlement Reconciliation | 0/TBD | Not started | - |
 | 4. AI CMO — Boli-Baki Recovery, Break-Even Studio & Closing Ritual | 0/TBD | Not started | - |
 | 5. Authentic Paytm Mobile UI & Judge Quick-Trigger Command Bar | 0/TBD | Not started | - |
