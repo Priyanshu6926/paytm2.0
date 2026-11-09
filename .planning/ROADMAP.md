@@ -32,8 +32,13 @@ Munim-AI transforms everyday Indian kirana operations through an auditable, voic
 **Plans**: 3 plans
 
 Plans:
+**Wave 1**
 - [ ] 01-01-PLAN.md — Database Schema & Append-Only Connection Engine (8 tables from PRD §6 with append-only triggers)
+
+**Wave 2** *(blocked on Wave 1 completion)*
 - [ ] 01-02-PLAN.md — Deterministic Python Engine & Identity Disambiguation (SQL SUM balance calculation, reversal adjustment handling, and identity disambiguation guard)
+
+**Wave 3** *(blocked on Wave 2 completion)*
 - [ ] 01-03-PLAN.md — Mumbai Kirana Store Demo Seeder & Walking Skeleton Harness (Dadar demo store dataset, FastAPI memory router, and e2e verification suite)
 
 ### Phase 2: Core Voice & Multimodal Gateway

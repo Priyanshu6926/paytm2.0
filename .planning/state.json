@@ -1,0 +1,38 @@
+{
+  "contract": "1.0.0",
+  "flavor": "core",
+  "milestone": "v1.0 — MVP",
+  "phases": [
+    {
+      "number": "1",
+      "name": "KiranaOS Deterministic Memory & Store Engine",
+      "status": "pending"
+    },
+    {
+      "number": "2",
+      "name": "Core Voice & Multimodal Gateway",
+      "status": "pending"
+    },
+    {
+      "number": "3",
+      "name": "AI CFO — Margin Defense & Settlement Reconciliation",
+      "status": "pending"
+    },
+    {
+      "number": "4",
+      "name": "AI CMO — Boli-Baki Recovery, Break-Even Studio & Closing Ritual",
+      "status": "pending"
+    },
+    {
+      "number": "5",
+      "name": "Authentic Paytm Mobile UI & Judge Quick-Trigger Command Bar",
+      "status": "pending"
+    }
+  ],
+  "next": {
+    "command": "/gsd-progress --next",
+    "label": "Advance to the next step",
+    "reason": "Phase 1 of 5 · executing"
+  },
+  "updated_at": "2026-11-09T17:17:57.673Z"
+}
