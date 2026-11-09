@@ -10,7 +10,7 @@ Munim-AI transforms everyday Indian kirana operations through an auditable, voic
 
 ## Phases
 
-- [ ] **Phase 1: KiranaOS Deterministic Memory & Store Engine** - Immutable SQLite ledger, Python math engine, and Mumbai kirana baseline data
+- [x] **Phase 1: KiranaOS Deterministic Memory & Store Engine** - Immutable SQLite ledger, Python math engine, and Mumbai kirana baseline data (completed 2026-11-09)
 - [ ] **Phase 2: Core Voice & Multimodal Gateway** - Sarvam Saaras STT with SQL keyterm biasing, Bulbul TTS, and survivability fallbacks
 - [ ] **Phase 3: AI CFO — Margin Defense & Settlement Reconciliation** - Wholesale price-creep alerts, dual stock/khata write, settlement waterfall, and ambiguous UPI queue
 - [ ] **Phase 4: AI CMO — Boli-Baki Recovery, Break-Even Studio & Closing Ritual** - Vernacular voice reminders, Soundbox payment webhooks, break-even studio, closing ritual, and bahi-khata scanner
@@ -20,7 +20,6 @@ Munim-AI transforms everyday Indian kirana operations through an auditable, voic
 
 ### Phase 1: KiranaOS Deterministic Memory & Store Engine
 **Goal**: Establish an immutable, append-only SQLite financial and inventory backbone with pure Python deterministic calculation of customer balances and audit logs, pre-seeded with Dadar kirana store baseline data.
-**Mode**: mvp
 **Depends on**: Nothing (first phase)
 **Requirements**: LEDGER-01, LEDGER-02, LEDGER-03, LEDGER-04, LEDGER-05
 **Success Criteria** (what must be TRUE):
@@ -29,21 +28,20 @@ Munim-AI transforms everyday Indian kirana operations through an auditable, voic
   3. Inventory stock deltas, wholesale unit costs, and invoice references record into an append-only `stock_events` table.
   4. System logs every operational action into `business_events` with structured JSON evidence payloads to power auditability.
   5. System seeds and boots cleanly with realistic demo records for "Ganesh Provision & General Store (Dadar, Mumbai)".
-**Plans**: 3 plans
+**Plans**: 3/3 plans complete
 
 Plans:
 **Wave 1**
-- [ ] 01-01-PLAN.md — Database Schema & Append-Only Connection Engine (8 tables from PRD §6 with append-only triggers)
+- [x] 01-01-PLAN.md — Database Schema & Append-Only Connection Engine (8 tables from PRD §6 with append-only triggers)
 
 **Wave 2** *(blocked on Wave 1 completion)*
-- [ ] 01-02-PLAN.md — Deterministic Python Engine & Identity Disambiguation (SQL SUM balance calculation, reversal adjustment handling, and identity disambiguation guard)
+- [x] 01-02-PLAN.md — Deterministic Python Engine & Identity Disambiguation (SQL SUM balance calculation, reversal adjustment handling, and identity disambiguation guard)
 
 **Wave 3** *(blocked on Wave 2 completion)*
-- [ ] 01-03-PLAN.md — Mumbai Kirana Store Demo Seeder & Walking Skeleton Harness (Dadar demo store dataset, FastAPI memory router, and e2e verification suite)
+- [x] 01-03-PLAN.md — Mumbai Kirana Store Demo Seeder & Walking Skeleton Harness (Dadar demo store dataset, FastAPI memory router, and e2e verification suite)
 
 ### Phase 2: Core Voice & Multimodal Gateway
 **Goal**: Provide shop-counter speech-to-intent and text-to-speech interaction using Sarvam Saaras STT with dynamic SQL keyterm biasing and Bulbul v3 TTS, backed by sub-6-second local synthetic fallbacks.
-**Mode**: mvp
 **Depends on**: Phase 1
 **Requirements**: VOICE-01, VOICE-02, VOICE-03
 **Success Criteria** (what must be TRUE):
@@ -54,7 +52,6 @@ Plans:
 
 ### Phase 3: AI CFO — Margin Defense & Settlement Reconciliation
 **Goal**: Guard thin kirana retail margins against distributor wholesale cost increases and demystify daily Paytm payout deductions down to ₹0.01.
-**Mode**: mvp
 **Depends on**: Phase 1, Phase 2
 **Requirements**: CFO-01, CFO-02, CFO-03, CFO-04, CFO-05
 **Success Criteria** (what must be TRUE):
@@ -67,7 +64,6 @@ Plans:
 
 ### Phase 4: AI CMO — Boli-Baki Recovery, Break-Even Studio & Closing Ritual
 **Goal**: Accelerate store cash recovery through polite vernacular voice reminders, simulated Soundbox payment webhooks, margin-safe discount promotions, notebook OCR onboarding, and an evening closing ritual.
-**Mode**: mvp
 **Depends on**: Phase 1, Phase 2, Phase 3
 **Requirements**: CMO-01, CMO-02, CMO-03, CMO-04, CMO-05, CMO-06, ONBOARD-01
 **Success Criteria** (what must be TRUE):
@@ -82,7 +78,6 @@ Plans:
 
 ### Phase 5: Authentic Paytm Mobile UI & Judge Quick-Trigger Command Bar
 **Goal**: Deliver a mobile-first Paytm Merchant web interface with official brand styling (#002970/#00BAF2), 4 operational tabs, "Why am I seeing this?" evidence drawers, live Soundbox audio simulator, and a fail-safe Judge Quick-Trigger Bar.
-**Mode**: mvp
 **Depends on**: Phase 1, Phase 2, Phase 3, Phase 4
 **Requirements**: UI-01, UI-02, UI-03, UI-04, UI-05
 **Success Criteria** (what must be TRUE):
@@ -98,7 +93,7 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. KiranaOS Deterministic Memory & Store Engine | 0/3 | Planning complete | - |
+| 1. KiranaOS Deterministic Memory & Store Engine | 3/3 | Complete    | 2026-11-09 |
 | 2. Core Voice & Multimodal Gateway | 0/TBD | Not started | - |
 | 3. AI CFO — Margin Defense & Settlement Reconciliation | 0/TBD | Not started | - |
 | 4. AI CMO — Boli-Baki Recovery, Break-Even Studio & Closing Ritual | 0/TBD | Not started | - |

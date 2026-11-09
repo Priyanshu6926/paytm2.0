@@ -15,11 +15,11 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### KiranaOS Deterministic Memory & Ledger (LEDGER)
 
-- [ ] **LEDGER-01**: User balances are deterministically computed in Python via SQL `SUM()` over an append-only `ledger_entries` table with zero UPDATE/DELETE mutations.
-- [ ] **LEDGER-02**: System detects ambiguous customer names (e.g. "Suresh") and halts auto-writing, displaying an interactive 1-tap identity disambiguation card.
-- [ ] **LEDGER-03**: System logs all inventory movements to an append-only `stock_events` table with quantity deltas, unit costs, and invoice references.
-- [ ] **LEDGER-04**: System records all business operations into `business_events` with structured JSON evidence powering the "Why am I seeing this?" drawer.
-- [ ] **LEDGER-05**: System boots with pre-seeded demo dataset for "Ganesh Provision & General Store (Dadar, Mumbai)" including debtors, inventory items, and suppliers.
+- [x] **LEDGER-01**: User balances are deterministically computed in Python via SQL `SUM()` over an append-only `ledger_entries` table with zero UPDATE/DELETE mutations.
+- [x] **LEDGER-02**: System detects ambiguous customer names (e.g. "Suresh") and halts auto-writing, displaying an interactive 1-tap identity disambiguation card.
+- [x] **LEDGER-03**: System logs all inventory movements to an append-only `stock_events` table with quantity deltas, unit costs, and invoice references.
+- [x] **LEDGER-04**: System records all business operations into `business_events` with structured JSON evidence powering the "Why am I seeing this?" drawer.
+- [x] **LEDGER-05**: System boots with pre-seeded demo dataset for "Ganesh Provision & General Store (Dadar, Mumbai)" including debtors, inventory items, and suppliers.
 
 ### Munim AI CFO (CFO)
 
@@ -78,11 +78,11 @@ Which phases cover which requirements. Populated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| LEDGER-01 | Phase 1 | Pending |
-| LEDGER-02 | Phase 1 | Pending |
-| LEDGER-03 | Phase 1 | Pending |
-| LEDGER-04 | Phase 1 | Pending |
-| LEDGER-05 | Phase 1 | Pending |
+| LEDGER-01 | Phase 1 | Complete |
+| LEDGER-02 | Phase 1 | Complete |
+| LEDGER-03 | Phase 1 | Complete |
+| LEDGER-04 | Phase 1 | Complete |
+| LEDGER-05 | Phase 1 | Complete |
 | VOICE-01 | Phase 2 | Pending |
 | VOICE-02 | Phase 2 | Pending |
 | VOICE-03 | Phase 2 | Pending |
@@ -112,4 +112,3 @@ Which phases cover which requirements. Populated during roadmap creation.
 ---
 *Requirements defined: 2026-11-09*
 *Last updated: 2026-11-09 after roadmap creation*
-
