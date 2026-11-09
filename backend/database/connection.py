@@ -64,12 +64,14 @@ def init_db(db_path: Optional[str] = None) -> None:
     Initialize the database using backend/database/schema.sql.
     Creates parent directories and executes authoritative DDL statements.
     """
+    if not os.path.exists(SCHEMA_PATH):
+        raise FileNotFoundError(f"Authoritative schema file not found at {SCHEMA_PATH}")
+
     conn = get_db_connection(db_path)
     try:
-        if os.path.exists(SCHEMA_PATH):
-            with open(SCHEMA_PATH, "r", encoding="utf-8") as f:
-                schema_sql = f.read()
-            conn.executescript(schema_sql)
-            conn.commit()
+        with open(SCHEMA_PATH, "r", encoding="utf-8") as f:
+            schema_sql = f.read()
+        conn.executescript(schema_sql)
+        conn.commit()
     finally:
         close_db_connection(conn)
