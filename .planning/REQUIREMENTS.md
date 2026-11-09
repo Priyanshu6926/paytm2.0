@@ -9,9 +9,9 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Core Voice & Multimodal Input (VOICE)
 
-- [ ] **VOICE-01**: User can speak or type shop-counter commands in Hinglish/Marathi, transcribed via Sarvam Saaras STT with SQL keyterm biasing, producing an unconfirmed Proposal Card.
-- [ ] **VOICE-02**: System synthesizes high-quality vernacular spoken explanations and confirmation prompts using Sarvam Bulbul v3 TTS (`hi-IN`, `mr-IN`).
-- [ ] **VOICE-03**: System implements the Law of Demo-Day Survivability with 6-second timeouts and automatic fallback to authentic pre-computed audio and transcripts.
+- [x] **VOICE-01**: User can speak or type shop-counter commands in Hinglish/Marathi, transcribed via Sarvam Saaras STT with SQL keyterm biasing, producing an unconfirmed Proposal Card.
+- [x] **VOICE-02**: System synthesizes high-quality vernacular spoken explanations and confirmation prompts using Sarvam Bulbul v3 TTS (`hi-IN`, `mr-IN`).
+- [x] **VOICE-03**: System implements the Law of Demo-Day Survivability with 6-second timeouts and automatic fallback to authentic pre-computed audio and transcripts.
 
 ### KiranaOS Deterministic Memory & Ledger (LEDGER)
 
@@ -83,9 +83,9 @@ Which phases cover which requirements. Populated during roadmap creation.
 | LEDGER-03 | Phase 1 | Complete |
 | LEDGER-04 | Phase 1 | Complete |
 | LEDGER-05 | Phase 1 | Complete |
-| VOICE-01 | Phase 2 | Pending |
-| VOICE-02 | Phase 2 | Pending |
-| VOICE-03 | Phase 2 | Pending |
+| VOICE-01 | Phase 2 | Complete |
+| VOICE-02 | Phase 2 | Complete |
+| VOICE-03 | Phase 2 | Complete |
 | CFO-01 | Phase 3 | Pending |
 | CFO-02 | Phase 3 | Pending |
 | CFO-03 | Phase 3 | Pending |
