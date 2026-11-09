@@ -29,7 +29,12 @@ Munim-AI transforms everyday Indian kirana operations through an auditable, voic
   3. Inventory stock deltas, wholesale unit costs, and invoice references record into an append-only `stock_events` table.
   4. System logs every operational action into `business_events` with structured JSON evidence payloads to power auditability.
   5. System seeds and boots cleanly with realistic demo records for "Ganesh Provision & General Store (Dadar, Mumbai)".
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [ ] 01-01-PLAN.md — Database Schema & Append-Only Connection Engine (8 tables from PRD §6 with append-only triggers)
+- [ ] 01-02-PLAN.md — Deterministic Python Engine & Identity Disambiguation (SQL SUM balance calculation, reversal adjustment handling, and identity disambiguation guard)
+- [ ] 01-03-PLAN.md — Mumbai Kirana Store Demo Seeder & Walking Skeleton Harness (Dadar demo store dataset, FastAPI memory router, and e2e verification suite)
 
 ### Phase 2: Core Voice & Multimodal Gateway
 **Goal**: Provide shop-counter speech-to-intent and text-to-speech interaction using Sarvam Saaras STT with dynamic SQL keyterm biasing and Bulbul v3 TTS, backed by sub-6-second local synthetic fallbacks.
@@ -88,7 +93,7 @@ Munim-AI transforms everyday Indian kirana operations through an auditable, voic
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. KiranaOS Deterministic Memory & Store Engine | 0/TBD | Not started | - |
+| 1. KiranaOS Deterministic Memory & Store Engine | 0/3 | Planning complete | - |
 | 2. Core Voice & Multimodal Gateway | 0/TBD | Not started | - |
 | 3. AI CFO — Margin Defense & Settlement Reconciliation | 0/TBD | Not started | - |
 | 4. AI CMO — Boli-Baki Recovery, Break-Even Studio & Closing Ritual | 0/TBD | Not started | - |
