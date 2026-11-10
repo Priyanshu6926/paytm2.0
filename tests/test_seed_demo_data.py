@@ -112,9 +112,9 @@ def test_seed_demo_data_inventory_and_supplier(fresh_db):
     assert bhujia["festive_multiplier"] == 1.0
     assert bhujia["reorder_threshold"] == 5
 
-    # 4. Stock Events: inward movements for all three items
+    # 4. Stock Events: inward movements for inventory items
     stock_events = fresh_db.execute("SELECT * FROM stock_events").fetchall()
-    assert len(stock_events) == 3
+    assert len(stock_events) == 4
     for se in stock_events:
         assert se["event_type"] == "INWARD_INVOICE"
         assert se["quantity_delta"] > 0
@@ -153,7 +153,7 @@ def test_seed_demo_data_unmatched_payments_and_business_events(fresh_db):
     evidence = json.loads(startup_events[0]["evidence_json"])
     assert evidence["store_name"] == STORE_NAME
     assert evidence["customers_seeded"] == 4
-    assert evidence["inventory_items_seeded"] == 3
+    assert evidence["inventory_items_seeded"] == 4
 
 
 def test_seed_all_strict_idempotence(fresh_db):

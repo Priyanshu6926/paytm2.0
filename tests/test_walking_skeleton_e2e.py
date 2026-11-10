@@ -152,12 +152,13 @@ def test_inventory_list(client):
     assert resp.status_code == 200
     items = resp.json()
     assert isinstance(items, list)
-    assert len(items) == 3
+    assert len(items) == 4
 
     skus = {item["sku_name"]: item for item in items}
     assert "Amul Pure Ghee 1L" in skus
     assert "Fortune Sunlite Oil 1L" in skus
     assert "Haldiram Aloo Bhujia 400g" in skus
+    assert "Maggi Masala 70g" in skus
 
     ghee = skus["Amul Pure Ghee 1L"]
     assert ghee["current_stock"] == 4

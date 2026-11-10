@@ -216,6 +216,24 @@ def seed_all(conn: Optional[sqlite3.Connection] = None) -> Dict[str, Any]:
                 "days_sold": 22,
                 "invoice_num": "GW-INV-2026-089",
             },
+            {
+                "sku_name": "Maggi Masala 70g",
+                "local_aliases": ["Maggi Masala", "Maggi 70g", "Masala Noodles"],
+                "category": "Packaged Foods & Noodles",
+                "current_stock": 96,
+                "unit": "packets",
+                "last_unit_cost": 11.25,
+                "previous_unit_cost": 11.25,
+                "selling_price": 14.0,
+                "avg_daily_burn": 12.0,
+                "festive_multiplier": 1.2,
+                "reorder_threshold": 24,
+                "supplier_name": "Gupta Wholesalers, APMC Vashi",
+                "supplier_phone": "+919820999000",
+                "days_restocked": 5,
+                "days_sold": 1,
+                "invoice_num": "GW-INV-2026-103",
+            },
         ]
 
         item_id_map: Dict[str, int] = {}
