@@ -67,7 +67,17 @@ Plans:
   3. Approving a scanned bill triggers an atomic dual write to `stock_events` (inventory received) and `ledger_entries` (supplier khata balance).
   4. "Mera Paisa Kam Kyun Aaya?" waterfall calculation deterministically reconciles Gross QR Sales minus Loan Daily EDI, Soundbox fee, and customer refunds to Net Bank Credit with vernacular Bulbul audio.
   5. Incoming Paytm QR payments matching multiple debtor accounts are held in an Unmatched Payments Queue for 1-tap manual assignment.
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+**Wave 1**
+- [ ] 03-01-PLAN.md — Wholesale Price-Creep Engine, Settlement Waterfall & Bill OCR Parser (calculate_price_creep, calculate_settlement_reconciliation in deterministic_engine.py, and bill_parser_service.py with Sarvam Vision OCR and offline fallback)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+- [ ] 03-02-PLAN.md — AI CFO Router with Distributor Bill Dual Action & Spoken Explainer (cfo_router.py mounted at /api/v1/cfo/* exposing /scan-distributor-bill, /confirm-distributor-bill with atomic stock + supplier khata writes, and /settlement-explainer with Bulbul TTS)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+- [ ] 03-03-PLAN.md — Ambiguous UPI Reconciliation Queue & QR Webhook Simulator (/unmatched-payments queue, /resolve-unmatched-payment 1-tap debtor assignment, and /simulate-qr-webhook routing collisions to queue)
 
 ### Phase 4: AI CMO — Boli-Baki Recovery, Break-Even Studio & Closing Ritual
 **Goal**: Accelerate store cash recovery through polite vernacular voice reminders, simulated Soundbox payment webhooks, margin-safe discount promotions, notebook OCR onboarding, and an evening closing ritual.
@@ -102,6 +112,6 @@ Plans:
 |-------|----------------|--------|-----------|
 | 1. KiranaOS Deterministic Memory & Store Engine | 3/3 | Complete    | 2026-11-09 |
 | 2. Core Voice & Multimodal Gateway | 2/2 | Complete    | 2026-11-10 |
-| 3. AI CFO — Margin Defense & Settlement Reconciliation | 0/TBD | Not started | - |
+| 3. AI CFO — Margin Defense & Settlement Reconciliation | 0/3 | In progress | - |
 | 4. AI CMO — Boli-Baki Recovery, Break-Even Studio & Closing Ritual | 0/TBD | Not started | - |
 | 5. Authentic Paytm Mobile UI & Judge Quick-Trigger Command Bar | 0/TBD | Not started | - |
