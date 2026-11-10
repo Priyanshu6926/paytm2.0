@@ -6,6 +6,7 @@ Validates PRD §5.2, §5.3, §7.2, §7.3, D-01, and D-03.
 import pytest
 
 from backend.database.connection import close_db_connection, get_db_connection, init_db
+from backend.services.bill_parser_service import parse_distributor_bill
 from backend.services.deterministic_engine import (
     calculate_price_creep,
     calculate_settlement_reconciliation,
@@ -196,3 +197,122 @@ def test_seed_demo_data_has_maggi_masala(fresh_db):
     assert row["previous_unit_cost"] == 11.25
     assert row["selling_price"] == 14.0
     assert row["supplier_name"] == "Gupta Wholesalers, APMC Vashi"
+
+
+# -----------------------------------------------------------------------------
+# 4. Bill Parser Service Tests (PRD §7.2, D-02)
+# -----------------------------------------------------------------------------
+
+def test_parse_distributor_bill_demo_preset(fresh_db):
+    """
+    Validates parsing demo preset invoice GW-2026-994:
+      - 3 line items summing to Rs 4,920.00
+      - Fortune Oil: price creep flagged (+7.58%, Rs 10 erosion, Rs 160 MRP)
+      - Maggi Masala & Amul Ghee: not flagged
+      - Dual action preview text matches PRD §7.2
+      - High-contrast alert & valid base64 audio attached
+      - Existing item_ids mapped correctly from database
+    """
+    result = parse_distributor_bill(use_demo_sample=True, conn=fresh_db)
+
+    assert result["status"] == "PROPOSAL"
+    assert result["supplier_name"] == "Gupta Wholesalers, APMC Vashi"
+    assert result["invoice_number"] == "GW-2026-994"
+    assert result["invoice_total"] == 4920.00
+    assert len(result["line_items"]) == 3
+
+    # Check line items and mapped item_ids
+    items_by_name = {it["sku_name"]: it for it in result["line_items"]}
+    assert "Fortune Sunlite Oil 1L" in items_by_name
+    assert "Maggi Masala 70g" in items_by_name
+    assert "Amul Pure Ghee 1L" in items_by_name
+
+    oil = items_by_name["Fortune Sunlite Oil 1L"]
+    assert oil["qty"] == 20
+    assert oil["unit"] == "liters"
+    assert oil["unit_cost"] == 142.00
+    assert oil["line_total"] == 2840.00
+    assert oil["item_id"] is not None
+
+    maggi = items_by_name["Maggi Masala 70g"]
+    assert maggi["qty"] == 96
+    assert maggi["unit"] == "packets"
+    assert maggi["unit_cost"] == 11.25
+    assert maggi["line_total"] == 1080.00
+    assert maggi["item_id"] is not None
+
+    ghee = items_by_name["Amul Pure Ghee 1L"]
+    assert ghee["qty"] == 2
+    assert ghee["unit"] == "tins"
+    assert ghee["unit_cost"] == 500.00
+    assert ghee["line_total"] == 1000.00
+    assert ghee["item_id"] is not None
+
+    # Check total sum
+    total_lines = sum(it["line_total"] for it in result["line_items"])
+    assert total_lines == 4920.00
+
+    # Check price creep alerts: exactly 1 alert for Fortune Oil
+    assert len(result["price_creep_alerts"]) == 1
+    alert = result["price_creep_alerts"][0]
+    assert alert["sku_name"] == "Fortune Sunlite Oil 1L"
+    assert alert["previous_unit_cost"] == 132.00
+    assert alert["new_unit_cost"] == 142.00
+    assert alert["creep_percentage"] == 7.58
+    assert alert["margin_erosion_per_unit"] == 10.00
+    assert alert["recommended_new_mrp"] == 160.00
+    assert "Savdhaan!" in alert["alert_hi"]
+
+    # Check dual action preview
+    assert "+118 units to Inventory" in result["dual_action_preview"]
+    assert "Rs 4,920 payable in Gupta Wholesalers Khata" in result["dual_action_preview"]
+
+    # Check TTS audio base64 is present and valid
+    assert result["tts_audio_base64"]
+    assert len(result["tts_audio_base64"]) > 50
+
+
+def test_parse_distributor_bill_mock_bytes_fallback(fresh_db):
+    """
+    Validates that providing raw image bytes with mock_fallback=True
+    gracefully outputs proposal with invoice total Rs 4,920.00 and audio.
+    """
+    mock_bytes = b"\xff\xd8\xff\xe0\x00\x10JFIF" + (b"\x00" * 1024)
+    result = parse_distributor_bill(image_bytes=mock_bytes, conn=fresh_db, mock_fallback=True)
+
+    assert result["status"] == "PROPOSAL"
+    assert result["invoice_total"] == 4920.00
+    assert len(result["line_items"]) == 3
+    assert result["tts_audio_base64"]
+    assert result["fallback_used"] is True
+
+
+def test_parse_distributor_bill_oversized_payload_protection(fresh_db):
+    """Guards against oversized upload (>10MB) per T-03-01 without raising unhandled exception."""
+    oversized_bytes = b"0" * (11 * 1024 * 1024)
+    result = parse_distributor_bill(image_bytes=oversized_bytes, conn=fresh_db)
+    assert result["status"] == "PROPOSAL"
+    assert result["fallback_used"] is True
+    assert result["invoice_total"] == 4920.00
+
+
+def test_parse_distributor_bill_external_timeout_fallback(fresh_db, monkeypatch):
+    """Simulates Sarvam Vision network timeout and validates graceful fallback per D-02."""
+    import httpx
+    from backend.services import bill_parser_service
+
+    def mock_post(*args, **kwargs):
+        raise httpx.TimeoutException("Sarvam Vision OCR timeout after 6.0s")
+
+    monkeypatch.setattr(httpx.Client, "post", mock_post)
+    monkeypatch.setenv("SARVAM_API_KEY", "test-live-key")
+
+    result = bill_parser_service.parse_distributor_bill(
+        image_bytes=b"sample-bill-bytes", conn=fresh_db, mock_fallback=False
+    )
+    assert result["status"] == "PROPOSAL"
+    assert result["fallback_used"] is True
+    assert result["invoice_total"] == 4920.00
+    assert len(result["price_creep_alerts"]) == 1
+    assert result["tts_audio_base64"]
+
