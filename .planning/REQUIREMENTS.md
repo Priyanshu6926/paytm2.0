@@ -23,11 +23,11 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Munim AI CFO (CFO)
 
-- [ ] **CFO-01**: User can scan distributor wholesale bills via Sarvam Vision OCR from sample presets or custom image uploads.
-- [ ] **CFO-02**: System calculates price creep percentage in pure Python arithmetic and flags any wholesale cost increase $\ge 2\%$ with recommended new selling price.
-- [ ] **CFO-03**: User can approve scanned distributor bills with a single tap, executing dual atomic writes to both inventory stock and supplier payable khata.
-- [ ] **CFO-04**: User can view and listen to "Mera Paisa Kam Kyun Aaya?" settlement waterfall reconciling Gross QR Sales, Loan EDI, Soundbox fee, and refunds down to ₹0.01.
-- [ ] **CFO-05**: System routes ambiguous Paytm QR payments (matching multiple debtors) to an Unmatched Payments Queue for 1-tap manual assignment.
+- [x] **CFO-01**: User can scan distributor wholesale bills via Sarvam Vision OCR from sample presets or custom image uploads.
+- [x] **CFO-02**: System calculates price creep percentage in pure Python arithmetic and flags any wholesale cost increase $\ge 2\%$ with recommended new selling price.
+- [x] **CFO-03**: User can approve scanned distributor bills with a single tap, executing dual atomic writes to both inventory stock and supplier payable khata.
+- [x] **CFO-04**: User can view and listen to "Mera Paisa Kam Kyun Aaya?" settlement waterfall reconciling Gross QR Sales, Loan EDI, Soundbox fee, and refunds down to ₹0.01.
+- [x] **CFO-05**: System routes ambiguous Paytm QR payments (matching multiple debtors) to an Unmatched Payments Queue for 1-tap manual assignment.
 
 ### Munim AI CMO (CMO)
 
@@ -86,11 +86,11 @@ Which phases cover which requirements. Populated during roadmap creation.
 | VOICE-01 | Phase 2 | Complete |
 | VOICE-02 | Phase 2 | Complete |
 | VOICE-03 | Phase 2 | Complete |
-| CFO-01 | Phase 3 | Pending |
-| CFO-02 | Phase 3 | Pending |
-| CFO-03 | Phase 3 | Pending |
-| CFO-04 | Phase 3 | Pending |
-| CFO-05 | Phase 3 | Pending |
+| CFO-01 | Phase 3 | Complete |
+| CFO-02 | Phase 3 | Complete |
+| CFO-03 | Phase 3 | Complete |
+| CFO-04 | Phase 3 | Complete |
+| CFO-05 | Phase 3 | Complete |
 | CMO-01 | Phase 4 | Complete |
 | CMO-02 | Phase 4 | Complete |
 | CMO-03 | Phase 4 | Complete |

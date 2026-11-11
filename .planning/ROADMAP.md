@@ -13,7 +13,7 @@ Munim-AI transforms everyday Indian kirana operations through an auditable, voic
 - [x] **Phase 1: KiranaOS Deterministic Memory & Store Engine** - Immutable SQLite ledger, Python math engine, and Mumbai kirana baseline data (completed 2026-11-09)
 - [x] **Phase 2: Core Voice & Multimodal Gateway** - Sarvam Saaras STT with SQL keyterm biasing, Bulbul TTS, and survivability fallbacks (completed 2026-11-10)
 - [x] **Phase 3: AI CFO — Margin Defense & Settlement Reconciliation** - Wholesale price-creep alerts, dual stock/khata write, settlement waterfall, and ambiguous UPI queue (completed 2026-11-11)
-- [ ] **Phase 4: AI CMO — Boli-Baki Recovery, Break-Even Studio & Closing Ritual** - Vernacular voice reminders, Soundbox payment webhooks, break-even studio, closing ritual, and bahi-khata scanner
+- [x] **Phase 4: AI CMO — Boli-Baki Recovery, Break-Even Studio & Closing Ritual** - Vernacular voice reminders, Soundbox payment webhooks, break-even studio, closing ritual, and bahi-khata scanner (completed 2026-11-11)
 - [ ] **Phase 5: Authentic Paytm Mobile UI & Judge Quick-Trigger Command Bar** - Mobile viewport frame, 4 core tabs, evidence drawers, Soundbox chime simulator, and judge demo quick triggers
 
 ## Phase Details
@@ -123,5 +123,5 @@ Plans:
 | 1. KiranaOS Deterministic Memory & Store Engine | 3/3 | Complete    | 2026-11-09 |
 | 2. Core Voice & Multimodal Gateway | 2/2 | Complete    | 2026-11-10 |
 | 3. AI CFO — Margin Defense & Settlement Reconciliation | 3/3 | Complete    | 2026-11-11 |
-| 4. AI CMO — Boli-Baki Recovery, Break-Even Studio & Closing Ritual | 3/3 | In Progress | - |
+| 4. AI CMO — Boli-Baki Recovery, Break-Even Studio & Closing Ritual | 3/3 | Complete | 2026-11-11 |
 | 5. Authentic Paytm Mobile UI & Judge Quick-Trigger Command Bar | 0/TBD | Not started | - |
