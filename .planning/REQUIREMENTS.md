@@ -31,11 +31,11 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Munim AI CMO (CMO)
 
-- [ ] **CMO-01**: System identifies debtors overdue $>10$ days and generates personalized polite recovery reminders translated to customer's native language (`Sarvam Translate`).
-- [ ] **CMO-02**: System synthesizes native Bulbul v3 audio voice notes and issues unique tracked Paytm payment links (`paytm.me/munim-...`).
-- [ ] **CMO-03**: User can simulate customer paying via Paytm link, which fires an instant webhook, clears the customer ledger live, and triggers a Paytm Soundbox audio chime.
+- [x] **CMO-01**: System identifies debtors overdue $>10$ days and generates personalized polite recovery reminders translated to customer's native language (`Sarvam Translate`).
+- [x] **CMO-02**: System synthesizes native Bulbul v3 audio voice notes and issues unique tracked Paytm payment links (`paytm.me/munim-...`).
+- [x] **CMO-03**: User can simulate customer paying via Paytm link, which fires an instant webhook, clears the customer ledger live, and triggers a Paytm Soundbox audio chime.
 - [x] **CMO-04**: User can test discount offers on dead stock (>15d unsold) in the Break-Even Studio, calculating required sales volume and blocking loss-making promotions.
-- [ ] **CMO-05**: System tracks per-language campaign attribution across Hindi and Marathi payment links.
+- [x] **CMO-05**: System tracks per-language campaign attribution across Hindi and Marathi payment links.
 - [x] **CMO-06**: User can trigger the 60-Second Dukaan Closing Ritual, playing a spoken evening summary with net sales, recovered udhaar, and a deterministic $3.5\times$ Diwali festive restock order draft.
 
 ### Onboarding Vision (ONBOARD)
@@ -91,11 +91,11 @@ Which phases cover which requirements. Populated during roadmap creation.
 | CFO-03 | Phase 3 | Pending |
 | CFO-04 | Phase 3 | Pending |
 | CFO-05 | Phase 3 | Pending |
-| CMO-01 | Phase 4 | Pending |
-| CMO-02 | Phase 4 | Pending |
-| CMO-03 | Phase 4 | Pending |
+| CMO-01 | Phase 4 | Complete |
+| CMO-02 | Phase 4 | Complete |
+| CMO-03 | Phase 4 | Complete |
 | CMO-04 | Phase 4 | Complete |
-| CMO-05 | Phase 4 | Pending |
+| CMO-05 | Phase 4 | Complete |
 | CMO-06 | Phase 4 | Complete |
 | ONBOARD-01 | Phase 4 | Complete |
 | UI-01 | Phase 5 | Pending |
