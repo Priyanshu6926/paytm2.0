@@ -3,9 +3,15 @@ Unit tests for KiranaOS AI CMO deterministic engines and Handwritten Bahi-Khata 
 Validates PRD §5.4, §5.5, CMO-04, CMO-06, and ONBOARD-01.
 """
 
+import httpx
 import pytest
 
 from backend.database.connection import close_db_connection, get_db_connection, init_db
+from backend.services.bahi_khata_parser_service import (
+    MAX_IMAGE_BYTES,
+    REQUEST_TIMEOUT_SECONDS,
+    parse_bahi_khata_page,
+)
 from backend.services.deterministic_engine import (
     add_credit_entry,
     add_repayment_entry,
@@ -15,6 +21,19 @@ from backend.services.deterministic_engine import (
     log_business_event,
 )
 from backend.services.seed_demo_data import seed_all
+
+
+@pytest.fixture
+def fresh_db(tmp_path):
+    """Provides a cleanly initialized temporary SQLite database with seed data."""
+    db_file = tmp_path / "cmo_test.db"
+    init_db(str(db_file))
+    conn = get_db_connection(str(db_file))
+    seed_all(conn)
+    try:
+        yield conn
+    finally:
+        close_db_connection(conn)
 
 
 # -----------------------------------------------------------------------------
@@ -218,4 +237,182 @@ def test_ledger_commit_false_supports_atomic_rollback(tmp_path):
         assert calculate_customer_balance(conn, ramesh_id)["net_outstanding_balance"] == initial_balance
     finally:
         close_db_connection(conn)
+
+
+# -----------------------------------------------------------------------------
+# 3. Handwritten Bahi-Khata OCR Parser Service Tests (ONBOARD-01)
+# -----------------------------------------------------------------------------
+
+
+def test_bahi_khata_demo_preset_parsing(fresh_db):
+    """
+    Validates demo preset parsing:
+      - status == 'PROPOSAL', fallback_used == True
+      - non-empty batch-editable proposals with positive amounts
+      - deterministic total_proposed_amount equals exact sum of row amounts
+      - read-only classification against SQLite customers (zero business_events mutation)
+    """
+    events_before = fresh_db.execute("SELECT COUNT(*) AS cnt FROM business_events;").fetchone()["cnt"]
+    ledger_before = fresh_db.execute("SELECT COUNT(*) AS cnt FROM ledger_entries;").fetchone()["cnt"]
+
+    result = parse_bahi_khata_page(use_demo_sample=True, conn=fresh_db)
+
+    assert result["status"] == "PROPOSAL"
+    assert result["fallback_used"] is True
+    assert result["detected_language"] == "mr-IN"
+    assert result["proposal_count"] == len(result["proposals"])
+    assert result["proposal_count"] == 4
+
+    expected_sum = round(sum(row["amount"] for row in result["proposals"]), 2)
+    assert result["total_proposed_amount"] == expected_sum
+    assert expected_sum == 1290.00  # 340 + 520 + 280 + 150
+
+    for row in result["proposals"]:
+        assert row["amount"] > 0
+        assert row["match_status"] in {"EXISTING_CUSTOMER", "NEW_CUSTOMER", "AMBIGUOUS"}
+
+    # Confirm read-only preview did not mutate financial or audit tables
+    events_after = fresh_db.execute("SELECT COUNT(*) AS cnt FROM business_events;").fetchone()["cnt"]
+    ledger_after = fresh_db.execute("SELECT COUNT(*) AS cnt FROM ledger_entries;").fetchone()["cnt"]
+    assert events_after == events_before
+    assert ledger_after == ledger_before
+
+
+def test_bahi_khata_upload_fallback_and_10mb_guardrail(fresh_db, monkeypatch):
+    """
+    Passing mock JPEG bytes without SARVAM_API_KEY or >10MB bytes returns clean
+    offline fallback proposal without raising exceptions or calling network.
+    """
+    monkeypatch.delenv("SARVAM_API_KEY", raising=False)
+
+    # 1. Mock JPEG bytes without API key -> clean fallback
+    res_no_key = parse_bahi_khata_page(image_bytes=b"\xff\xd8\xffmock-jpeg", conn=fresh_db)
+    assert res_no_key["status"] == "PROPOSAL"
+    assert res_no_key["fallback_used"] is True
+    assert res_no_key["proposal_count"] == 4
+
+    # 2. >10MB payload even with API key set -> blocked before HTTP call, uses fallback
+    monkeypatch.setenv("SARVAM_API_KEY", "secret-test-key-should-not-leak")
+    called = {"count": 0}
+
+    def fail_if_called(*args, **kwargs):
+        called["count"] += 1
+        raise AssertionError("HTTP client should not be called for >10MB uploads")
+
+    monkeypatch.setattr(httpx.Client, "post", fail_if_called)
+
+    oversized = b"x" * (MAX_IMAGE_BYTES + 1)
+    res_oversized = parse_bahi_khata_page(image_bytes=oversized, conn=fresh_db)
+    assert called["count"] == 0
+    assert res_oversized["status"] == "PROPOSAL"
+    assert res_oversized["fallback_used"] is True
+    assert "secret-test-key-should-not-leak" not in str(res_oversized)
+
+
+def test_bahi_khata_timeout_survivability_6s(fresh_db, monkeypatch):
+    """
+    Mocking httpx.Client.post to raise httpx.TimeoutException degrades cleanly
+    under the 6.0s timeout policy to DEMO_BAHI_KHATA_PAGE with fallback_used=True.
+    """
+    monkeypatch.setenv("SARVAM_API_KEY", "secret-test-key-should-not-leak")
+    observed_timeouts = []
+
+    original_init = httpx.Client.__init__
+
+    def spy_init(self, *args, **kwargs):
+        observed_timeouts.append(kwargs.get("timeout"))
+        return original_init(self, *args, **kwargs)
+
+    def raise_timeout(self, *args, **kwargs):
+        raise httpx.TimeoutException("Sarvam Vision OCR timed out")
+
+    monkeypatch.setattr(httpx.Client, "__init__", spy_init)
+    monkeypatch.setattr(httpx.Client, "post", raise_timeout)
+
+    result = parse_bahi_khata_page(image_bytes=b"\xff\xd8\xffmock-jpeg", conn=fresh_db)
+
+    assert REQUEST_TIMEOUT_SECONDS == 6.0
+    assert observed_timeouts == [6.0]
+    assert result["status"] == "PROPOSAL"
+    assert result["fallback_used"] is True
+    assert result["proposal_count"] == 4
+    assert result["total_proposed_amount"] == 1290.00
+    assert "secret-test-key-should-not-leak" not in str(result)
+
+
+def test_bahi_khata_customer_match_classification(fresh_db, monkeypatch):
+    """
+    Validates EXISTING_CUSTOMER, NEW_CUSTOMER, and AMBIGUOUS classification:
+      - 'Ramesh Sharma' -> EXISTING_CUSTOMER with matched_customer_id and existing_balance
+      - 'Sunita Sawant' -> NEW_CUSTOMER with matched_customer_id=None
+      - 'Suresh' -> AMBIGUOUS with candidate_customers and matched_customer_id=None
+    Does not log SYSTEM_GUARD events during read-only OCR preview.
+    """
+    monkeypatch.setenv("SARVAM_API_KEY", "test-key")
+
+    class FakeResponse:
+        status_code = 200
+
+        def json(self):
+            return {
+                "page_title": "Uploaded Khata Page",
+                "detected_language": "mr-IN",
+                "entries": [
+                    {
+                        "customer_name": "Ramesh Sharma",
+                        "phone": "+919820111222",
+                        "preferred_language": "mr-IN",
+                        "amount": 150.0,
+                        "notes": "Milk + Bread",
+                        "confidence": 0.96,
+                    },
+                    {
+                        "customer_name": "Sunita Sawant",
+                        "phone": "+919821112233",
+                        "preferred_language": "mr-IN",
+                        "amount": 340.0,
+                        "notes": "Atta 5kg",
+                        "confidence": 0.94,
+                    },
+                    {
+                        "customer_name": "Suresh",
+                        "phone": "",
+                        "preferred_language": "mr-IN",
+                        "amount": 225.0,
+                        "notes": "Sugar 2kg",
+                        "confidence": 0.87,
+                    },
+                ],
+            }
+
+    monkeypatch.setattr(httpx.Client, "post", lambda self, *args, **kwargs: FakeResponse())
+
+    events_before = fresh_db.execute("SELECT COUNT(*) AS cnt FROM business_events;").fetchone()["cnt"]
+    result = parse_bahi_khata_page(image_bytes=b"\xff\xd8\xffmock-jpeg", conn=fresh_db)
+    events_after = fresh_db.execute("SELECT COUNT(*) AS cnt FROM business_events;").fetchone()["cnt"]
+
+    assert events_after == events_before
+    assert result["fallback_used"] is False
+    assert result["proposal_count"] == 3
+    assert result["total_proposed_amount"] == 715.00
+
+    by_name = {row["customer_name"]: row for row in result["proposals"]}
+
+    ramesh_row = by_name["Ramesh Sharma"]
+    assert ramesh_row["match_status"] == "EXISTING_CUSTOMER"
+    assert ramesh_row["matched_customer_id"] is not None
+    assert ramesh_row["existing_balance"] == 650.00
+
+    sunita_row = by_name["Sunita Sawant"]
+    assert sunita_row["match_status"] == "NEW_CUSTOMER"
+    assert sunita_row["matched_customer_id"] is None
+
+    suresh_row = by_name["Suresh"]
+    assert suresh_row["match_status"] == "AMBIGUOUS"
+    assert suresh_row["matched_customer_id"] is None
+    assert len(suresh_row["candidate_customers"]) == 2
+    cand_names = {c["name"] for c in suresh_row["candidate_customers"]}
+    assert "Suresh Patil (Tailor)" in cand_names
+    assert "Suresh Kadam (Kirana)" in cand_names
+
 
