@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from backend.database.connection import close_db_connection, get_db_connection, init_db
 from backend.routers.cfo_router import router as cfo_router
+from backend.routers.cmo_router import router as cmo_router
 from backend.routers.memory_router import router as memory_router
 from backend.routers.voice_router import router as voice_router
 from backend.services.seed_demo_data import STORE_NAME, seed_all
@@ -56,6 +57,7 @@ app.add_middleware(
 app.include_router(memory_router)
 app.include_router(voice_router)
 app.include_router(cfo_router)
+app.include_router(cmo_router)
 
 
 @app.get("/")
