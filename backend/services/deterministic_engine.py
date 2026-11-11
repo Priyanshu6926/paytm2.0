@@ -112,6 +112,7 @@ def log_business_event(
     summary_text: str,
     evidence: Dict[str, Any],
     actor: str = "MERCHANT_APPROVED",
+    commit: bool = True,
 ) -> int:
     """
     Appends an immutable audit event to business_events table.
@@ -142,7 +143,8 @@ def log_business_event(
         """,
         (event_category, summary_text, evidence_json, actor),
     )
-    conn.commit()
+    if commit:
+        conn.commit()
     return cursor.lastrowid
 
 
@@ -156,6 +158,7 @@ def record_ledger_entry(
     source_utterance: Optional[str] = None,
     confidence_score: float = 1.0,
     actor: str = "MERCHANT_APPROVED",
+    commit: bool = True,
 ) -> Dict[str, Any]:
     """
     Inserts a confirmed entry into ledger_entries and atomically logs an audit row
@@ -238,9 +241,11 @@ def record_ledger_entry(
         summary_text=summary,
         evidence=evidence,
         actor=actor,
+        commit=commit,
     )
 
-    conn.commit()
+    if commit:
+        conn.commit()
 
     return {
         "entry_id": entry_id,
@@ -262,6 +267,7 @@ def add_credit_entry(
     source_utterance: Optional[str] = None,
     provider_ref: Optional[str] = None,
     actor: str = "MERCHANT_APPROVED",
+    commit: bool = True,
 ) -> Dict[str, Any]:
     """Convenience helper to record an append-only CREDIT_UDHAAR entry."""
     return record_ledger_entry(
@@ -273,6 +279,7 @@ def add_credit_entry(
         provider_ref=provider_ref,
         source_utterance=source_utterance,
         actor=actor,
+        commit=commit,
     )
 
 
@@ -284,6 +291,7 @@ def add_repayment_entry(
     source_utterance: Optional[str] = None,
     provider_ref: Optional[str] = None,
     actor: str = "MERCHANT_APPROVED",
+    commit: bool = True,
 ) -> Dict[str, Any]:
     """Convenience helper to record an append-only REPAYMENT_JAMA entry."""
     return record_ledger_entry(
@@ -295,6 +303,7 @@ def add_repayment_entry(
         provider_ref=provider_ref,
         source_utterance=source_utterance,
         actor=actor,
+        commit=commit,
     )
 
 
@@ -754,5 +763,170 @@ def calculate_settlement_reconciliation(
         "verification_status": "DETERMINISTICALLY_BALANCED",
         "spoken_explanation_hi": spoken_explanation_hi,
     }
+
+
+def _to_finite_float(value: Any, field_name: str) -> float:
+    """Validates and converts a numeric input to a finite float."""
+    if isinstance(value, bool):
+        raise ValueError(f"{field_name} must be numeric, got bool")
+    try:
+        num = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{field_name} must be numeric, got {value!r}") from exc
+    if not math.isfinite(num):
+        raise ValueError(f"{field_name} must be finite, got {value!r}")
+    return num
+
+
+def calculate_breakeven_offer(
+    unit_cost: float,
+    selling_price: float,
+    usual_daily_volume: int,
+    proposed_discount: float,
+    sku_name: str = "",
+) -> Dict[str, Any]:
+    """
+    Computes break-even daily sales volume and enforces the loss-making hard stop
+    guardrail purely in Python without LLM arithmetic per PRD §5.4 and T-04-02.
+    """
+    raw_cost = _to_finite_float(unit_cost, "unit_cost")
+    raw_price = _to_finite_float(selling_price, "selling_price")
+    raw_discount = _to_finite_float(proposed_discount, "proposed_discount")
+    if isinstance(usual_daily_volume, bool):
+        raise ValueError("usual_daily_volume must be an integer, got bool")
+    try:
+        base_volume = int(usual_daily_volume)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            f"usual_daily_volume must be an integer, got {usual_daily_volume!r}"
+        ) from exc
+
+    if raw_price <= 0:
+        raise ValueError(f"selling_price must be > 0, got {raw_price}")
+    if raw_cost < 0:
+        raise ValueError(f"unit_cost must be >= 0, got {raw_cost}")
+    if raw_discount < 0:
+        raise ValueError(f"proposed_discount must be >= 0, got {raw_discount}")
+    if base_volume <= 0:
+        raise ValueError(f"usual_daily_volume must be > 0, got {base_volume}")
+
+    cost = round(raw_cost, 2)
+    price = round(raw_price, 2)
+    discount = round(raw_discount, 2)
+
+    old_margin_per_unit = round(price - cost, 2)
+    discounted_price = round(price - discount, 2)
+    new_margin_per_unit = round(discounted_price - cost, 2)
+
+    # Hard Stop Guardrail: block any offer that erodes margin to zero or negative
+    if new_margin_per_unit <= 0:
+        return {
+            "status": "OFFER_BLOCKED_LOSS_MAKING",
+            "verdict": "OFFER_BLOCKED_LOSS_MAKING",
+            "allowed": False,
+            "sku_name": sku_name,
+            "unit_cost": cost,
+            "selling_price": price,
+            "proposed_discount": discount,
+            "discounted_price": discounted_price,
+            "old_margin_per_unit": old_margin_per_unit,
+            "new_margin_per_unit": new_margin_per_unit,
+            "usual_daily_sales": base_volume,
+            "breakeven_daily_sales_needed": None,
+            "extra_units_needed_per_day": None,
+            "reason": f"This discount sells below your wholesale cost of ₹{cost:g}",
+        }
+
+    # If base margin is already <= 0 while new_margin > 0 is impossible since discount >= 0,
+    # old_margin_per_unit is strictly positive here.
+    ratio = round((base_volume * old_margin_per_unit) / new_margin_per_unit, 9)
+    breakeven_daily_sales_needed = int(math.ceil(ratio))
+    extra_units_needed_per_day = breakeven_daily_sales_needed - base_volume
+
+    if discount == 0:
+        verdict = "MARGIN_PRESERVED"
+    elif breakeven_daily_sales_needed >= 2 * base_volume:
+        verdict = "PROFITABLE_IF_VOLUME_DOUBLES"
+    else:
+        verdict = "PROFITABLE_IF_VOLUME_INCREASES"
+
+    return {
+        "status": "SAFE",
+        "verdict": verdict,
+        "allowed": True,
+        "sku_name": sku_name,
+        "unit_cost": cost,
+        "selling_price": price,
+        "proposed_discount": discount,
+        "discounted_price": discounted_price,
+        "old_margin_per_unit": old_margin_per_unit,
+        "new_margin_per_unit": new_margin_per_unit,
+        "usual_daily_sales": base_volume,
+        "breakeven_daily_sales_needed": breakeven_daily_sales_needed,
+        "extra_units_needed_per_day": extra_units_needed_per_day,
+        "reason": "",
+    }
+
+
+def calculate_festive_restock_forecast(
+    daily_burn_rate: float,
+    festive_multiplier: float,
+    current_stock: int,
+    festival_window_days: int = 5,
+    sku_name: str = "",
+    unit: str = "tins",
+    supplier_name: str = "Gupta Wholesalers",
+    upcoming_event: str = "Diwali Peak Week",
+) -> Dict[str, Any]:
+    """
+    Computes deterministic festival demand and restock order quantities in pure Python
+    per PRD §5.5 and §7.6 without LLM arithmetic.
+    """
+    burn = _to_finite_float(daily_burn_rate, "daily_burn_rate")
+    mult = _to_finite_float(festive_multiplier, "festive_multiplier")
+    if isinstance(current_stock, bool) or isinstance(festival_window_days, bool):
+        raise ValueError("current_stock and festival_window_days must be integers, not bool")
+    try:
+        stock = int(current_stock)
+        window_days = int(festival_window_days)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("current_stock and festival_window_days must be integers") from exc
+
+    if burn < 0:
+        raise ValueError(f"daily_burn_rate must be >= 0, got {burn}")
+    if mult <= 0:
+        raise ValueError(f"festive_multiplier must be > 0, got {mult}")
+    if window_days <= 0:
+        raise ValueError(f"festival_window_days must be > 0, got {window_days}")
+    if stock < 0:
+        raise ValueError(f"current_stock must be >= 0, got {stock}")
+
+    projected_5day_demand = int(math.ceil(round(burn * mult * window_days, 9)))
+    recommended_order_qty = max(0, projected_5day_demand - stock)
+
+    supplier_short = (supplier_name or "").split(",")[0].strip() or "Supplier"
+    if recommended_order_qty > 0:
+        sku_disp = sku_name.strip() if sku_name else "stock"
+        one_tap_order_draft = (
+            f"Namaste {supplier_short} ji, Diwali stock ke liye "
+            f"{recommended_order_qty} {unit} {sku_disp} kal subah bhej dijiye."
+        )
+    else:
+        one_tap_order_draft = "Stock sufficient for festive window."
+
+    return {
+        "upcoming_event": upcoming_event,
+        "days_away": window_days,
+        "sku_name": sku_name,
+        "unit": unit,
+        "current_stock": stock,
+        "normal_daily_burn": round(burn, 2),
+        "festive_surge_multiplier": round(mult, 2),
+        "projected_5day_demand": projected_5day_demand,
+        "recommended_order_qty": recommended_order_qty,
+        "supplier_name": supplier_name,
+        "one_tap_order_draft": one_tap_order_draft,
+    }
+
 
 
