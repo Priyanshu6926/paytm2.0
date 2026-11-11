@@ -44,11 +44,11 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Mobile UI & Live Presentation (UI)
 
-- [ ] **UI-01**: User experiences an authentic mobile-first Paytm Merchant App interface with Paytm brand colors (`#002970`, `#00BAF2`), crisp typography, and mobile frame viewport.
+- [x] **UI-01**: User experiences an authentic mobile-first Paytm Merchant App interface with Paytm brand colors (`#002970`, `#00BAF2`), crisp typography, and mobile frame viewport.
 - [ ] **UI-02**: User navigates 4 primary operational tabs: (1) Munim Mic & Operations, (2) AI CFO, (3) AI CMO, and (4) Business Memory Timeline.
-- [ ] **UI-03**: Proposal cards feature expandable "Why am I seeing this?" evidence pills and clear Propose $\rightarrow$ Confirm $\rightarrow$ Commit interaction gates.
+- [x] **UI-03**: Proposal cards feature expandable "Why am I seeing this?" evidence pills and clear Propose $\rightarrow$ Confirm $\rightarrow$ Commit interaction gates.
 - [ ] **UI-04**: UI includes a collapsible Judge Demo Quick-Trigger Bar with 6 one-click demo flows for 100% reliable stage presentations.
-- [ ] **UI-05**: UI integrates an interactive Paytm Soundbox simulator playing genuine audio chimes for received payments.
+- [x] **UI-05**: UI integrates an interactive Paytm Soundbox simulator playing genuine audio chimes for received payments.
 
 ## v2 Requirements
 
@@ -98,11 +98,11 @@ Which phases cover which requirements. Populated during roadmap creation.
 | CMO-05 | Phase 4 | Complete |
 | CMO-06 | Phase 4 | Complete |
 | ONBOARD-01 | Phase 4 | Complete |
-| UI-01 | Phase 5 | Pending |
+| UI-01 | Phase 5 | Complete |
 | UI-02 | Phase 5 | Pending |
-| UI-03 | Phase 5 | Pending |
+| UI-03 | Phase 5 | Complete |
 | UI-04 | Phase 5 | Pending |
-| UI-05 | Phase 5 | Pending |
+| UI-05 | Phase 5 | Complete |
 
 **Coverage:**
 - v1 requirements: 24 total
