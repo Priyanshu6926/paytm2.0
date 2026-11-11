@@ -315,3 +315,76 @@ def test_confirm_bahi_khata_idempotency_and_atomic_rollback(client_with_db):
     assert conn.execute("SELECT COUNT(*) FROM ledger_entries;").fetchone()[0] == ledger_count_after_first
     assert conn.execute("SELECT COUNT(*) FROM customers;").fetchone()[0] == cust_count_after_first
     close_db_connection(conn)
+
+
+def test_confirm_bahi_khata_ambiguous_customer_blocks_and_rolls_back(client_with_db):
+    """
+    Ambiguous match (name matches customer A while phone matches customer B) without
+    explicit customer_id must return HTTP 400 and roll back earlier rows in the batch.
+    """
+    client, db_path = client_with_db
+    conn = get_db_connection(db_path)
+    before_ledger = conn.execute("SELECT COUNT(*) FROM ledger_entries;").fetchone()[0]
+    before_custs = conn.execute("SELECT COUNT(*) FROM customers;").fetchone()[0]
+    close_db_connection(conn)
+
+    # Ramesh Sharma has phone +919820111222; Priya Deshmukh has phone +919820777888
+    ambiguous_batch = {
+        "batch_ref": "AMBIG-BATCH-01",
+        "entries": [
+            {
+                "customer_name": "Rollback Guard Customer",
+                "phone": "+919811223344",
+                "amount": 125.0,
+            },
+            {
+                "customer_name": "Ramesh Sharma",
+                "phone": "+919820777888",
+                "amount": 300.0,
+            },
+        ],
+    }
+
+    resp = client.post("/api/v1/cmo/confirm-bahi-khata", json=ambiguous_batch)
+    assert resp.status_code == 400
+    assert "Ambiguous" in resp.json()["detail"]
+
+    conn = get_db_connection(db_path)
+    assert (
+        conn.execute(
+            "SELECT id FROM customers WHERE name = 'Rollback Guard Customer';"
+        ).fetchone()
+        is None
+    )
+    assert conn.execute("SELECT COUNT(*) FROM ledger_entries;").fetchone()[0] == before_ledger
+    assert conn.execute("SELECT COUNT(*) FROM customers;").fetchone()[0] == before_custs
+    close_db_connection(conn)
+
+
+def test_dukaan_closing_ritual_includes_live_paytm_qr_today(client_with_db):
+    """
+    Verifies today's confirmed PAYTM_QR repayments increment today_qr_sales above
+    the 6450.00 baseline as well as today_udhaar_recovered.
+    """
+    client, db_path = client_with_db
+    conn = get_db_connection(db_path)
+    suresh = conn.execute(
+        "SELECT id FROM customers WHERE name = 'Suresh Patil (Tailor)';"
+    ).fetchone()
+    conn.execute(
+        """
+        INSERT INTO ledger_entries (
+            customer_id, entry_type, amount, payment_mode, provider_ref,
+            source_utterance, confidence_score, status
+        ) VALUES (?, 'REPAYMENT_JAMA', 200.0, 'PAYTM_QR', 'QR-TODAY-TEST-200', 'QR test', 1.0, 'CONFIRMED');
+        """,
+        (suresh["id"],),
+    )
+    conn.commit()
+    close_db_connection(conn)
+
+    resp = client.get("/api/v1/cmo/dukaan-closing-ritual")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["today_qr_sales"] == 6650.0
+    assert data["today_udhaar_recovered"] == 200.0

@@ -56,6 +56,20 @@ class SimulatePromoClickRequest(BaseModel):
     converted: Optional[bool] = None
 
 
+class BahiKhataConfirmEntry(BaseModel):
+    customer_id: Optional[int] = None
+    customer_name: str = Field(..., min_length=1)
+    phone: Optional[str] = None
+    preferred_language: str = "hi-IN"
+    amount: float = Field(..., gt=0)
+    notes: Optional[str] = None
+
+
+class ConfirmBahiKhataRequest(BaseModel):
+    batch_ref: Optional[str] = None
+    entries: List[BahiKhataConfirmEntry] = Field(..., min_length=1)
+
+
 # --------------------------------------------------------------------------
 # Internal Helpers
 # --------------------------------------------------------------------------
@@ -1070,5 +1084,222 @@ def get_dukaan_closing_ritual():
                 "formula": "ceil(daily_burn_rate * festive_multiplier * 5) - current_stock",
             },
         }
+    finally:
+        close_db_connection(conn)
+
+
+# --------------------------------------------------------------------------
+# 4. Handwritten Bahi-Khata Scanner & 1-Tap Atomic Onboarding (ONBOARD-01)
+# --------------------------------------------------------------------------
+
+
+@router.post("/scan-bahi-khata")
+async def scan_bahi_khata(
+    request: Request,
+    file: Optional[UploadFile] = File(None),
+    use_demo_sample: Optional[bool] = Query(None),
+):
+    """
+    Parses a physical bahi-khata notebook photo or demo sample into batch-editable
+    customer credit proposals via bahi_khata_parser_service (10MB cap, 6.0s Sarvam
+    Vision timeout with instant offline fallback).
+    """
+    content_type = request.headers.get("content-type", "")
+    is_demo = use_demo_sample if use_demo_sample is not None else False
+    image_bytes: Optional[bytes] = None
+
+    if "application/json" in content_type:
+        try:
+            body = await request.json()
+            if isinstance(body, dict) and "use_demo_sample" in body:
+                is_demo = bool(body["use_demo_sample"])
+        except Exception:
+            pass
+
+    if file is not None:
+        image_bytes = await file.read()
+    elif not is_demo and "multipart/form-data" not in content_type:
+        is_demo = True
+
+    conn = get_db_connection()
+    try:
+        proposal = parse_bahi_khata_page(
+            image_bytes=image_bytes,
+            use_demo_sample=is_demo or (image_bytes is None),
+            conn=conn,
+        )
+        return proposal
+    finally:
+        close_db_connection(conn)
+
+
+@router.post("/confirm-bahi-khata")
+def confirm_bahi_khata(req: ConfirmBahiKhataRequest):
+    """
+    Atomically onboards a batch of edited Bahi-Khata customer credit entries:
+      - Enforces batch_ref idempotency guard against ledger_entries.provider_ref.
+      - Validates all amounts (> 0, finite) and customer matches inside a single SQLite transaction.
+      - Creates new customers or links verified existing customers (rejecting ambiguous names).
+      - Records append-only CREDIT_UDHAAR entries via deterministic_engine.add_credit_entry
+        and logs a consolidated CMO_GROWTH audit event in business_events.
+    """
+    for idx, entry in enumerate(req.entries, start=1):
+        if not math.isfinite(entry.amount) or round(float(entry.amount), 2) <= 0:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Row {idx} amount must be a positive finite number.",
+            )
+        if not entry.customer_name.strip():
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Row {idx} customer_name cannot be blank.",
+            )
+
+    supplied_ref = (req.batch_ref or "").strip()
+    batch_id = supplied_ref or uuid.uuid4().hex[:12]
+
+    conn = get_db_connection()
+    try:
+        if supplied_ref:
+            existing_batch = conn.execute(
+                "SELECT id FROM ledger_entries WHERE provider_ref LIKE ? LIMIT 1;",
+                (f"BAHI-{supplied_ref}-%",),
+            ).fetchone()
+            if existing_batch is not None:
+                return {
+                    "status": "ALREADY_CONFIRMED",
+                    "batch_ref": supplied_ref,
+                    "message": "Bahi-khata batch already onboarded.",
+                }
+
+        conn.execute("BEGIN TRANSACTION;")
+        new_customers_created = 0
+        customer_results: List[Dict[str, Any]] = []
+
+        for idx, entry in enumerate(req.entries, start=1):
+            clean_name = entry.customer_name.strip()
+            amount_val = round(float(entry.amount), 2)
+
+            if entry.customer_id is not None:
+                cust = conn.execute(
+                    "SELECT id, name FROM customers WHERE id = ?;",
+                    (entry.customer_id,),
+                ).fetchone()
+                if cust is None:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail=f"Customer #{entry.customer_id} not found (row {idx}).",
+                    )
+                resolved_id = int(cust["id"])
+                resolved_name = str(cust["name"])
+                created_new = False
+            else:
+                lower_name = clean_name.lower()
+                norm_phone = _normalize_phone(entry.phone)
+                all_custs = conn.execute(
+                    "SELECT id, name, phone FROM customers;"
+                ).fetchall()
+
+                matched = []
+                for c in all_custs:
+                    db_name = (c["name"] or "").strip().lower()
+                    db_phone = _normalize_phone(c["phone"])
+                    if db_name == lower_name or (norm_phone and db_phone and norm_phone == db_phone):
+                        matched.append(c)
+
+                if len(matched) > 1:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=(
+                            f"Ambiguous customer match for '{clean_name}' (row {idx}). "
+                            "Please provide an explicit customer_id."
+                        ),
+                    )
+                if len(matched) == 1:
+                    resolved_id = int(matched[0]["id"])
+                    resolved_name = str(matched[0]["name"])
+                    created_new = False
+                else:
+                    clean_phone = (entry.phone or "").strip() or None
+                    pref_lang = (entry.preferred_language or "hi-IN").strip() or "hi-IN"
+                    cur = conn.execute(
+                        """
+                        INSERT INTO customers (name, aliases, phone, preferred_language, last_visit_date)
+                        VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP);
+                        """,
+                        (clean_name, json.dumps([], ensure_ascii=False), clean_phone, pref_lang),
+                    )
+                    resolved_id = int(cur.lastrowid)
+                    resolved_name = clean_name
+                    created_new = True
+                    new_customers_created += 1
+
+            provider_ref = f"BAHI-{batch_id}-{idx}"
+            utterance = f"Bahi-Khata OCR onboarding: {entry.notes or clean_name}"
+            credit_res = add_credit_entry(
+                conn=conn,
+                customer_id=resolved_id,
+                amount=amount_val,
+                source_utterance=utterance,
+                provider_ref=provider_ref,
+                actor="MERCHANT_APPROVED",
+                commit=False,
+            )
+
+            customer_results.append(
+                {
+                    "row_index": idx,
+                    "customer_id": resolved_id,
+                    "customer_name": resolved_name,
+                    "created_new_customer": created_new,
+                    "amount_credited": credit_res["amount"],
+                    "ledger_entry_id": credit_res["entry_id"],
+                    "provider_ref": provider_ref,
+                    "balance_after": credit_res["balance"]["net_outstanding_balance"],
+                }
+            )
+
+        total_onboarded_amount = round(
+            sum(round(float(e.amount), 2) for e in req.entries), 2
+        )
+
+        biz_event_id = log_business_event(
+            conn=conn,
+            event_category="CMO_GROWTH",
+            summary_text=(
+                f"Onboarded {len(req.entries)} Bahi-Khata entries "
+                f"({new_customers_created} new customers) totaling Rs {_format_amount_disp(total_onboarded_amount)}"
+            ),
+            evidence={
+                "batch_ref": batch_id,
+                "entries_recorded": len(req.entries),
+                "new_customers_created": new_customers_created,
+                "total_onboarded_amount": total_onboarded_amount,
+                "customer_results": customer_results,
+            },
+            actor="MERCHANT_APPROVED",
+            commit=False,
+        )
+        conn.commit()
+
+        return {
+            "status": "CONFIRMED",
+            "batch_ref": batch_id,
+            "entries_recorded": len(req.entries),
+            "new_customers_created": new_customers_created,
+            "total_onboarded_amount": total_onboarded_amount,
+            "customer_results": customer_results,
+            "business_event_id": biz_event_id,
+        }
+    except HTTPException:
+        conn.rollback()
+        raise
+    except Exception as exc:
+        conn.rollback()
+        logger.error("Failed to confirm bahi-khata batch: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to confirm bahi-khata onboarding batch.",
+        )
     finally:
         close_db_connection(conn)
