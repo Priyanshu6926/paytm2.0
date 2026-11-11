@@ -113,8 +113,18 @@ Plans:
   3. Every proposal card contains an expandable "Why am I seeing this?" drawer showing mathematical formulas, source documents, and ledger balance deltas before confirmation.
   4. Collapsible Judge Demo Quick-Trigger Bar enables hackathon evaluators to run all 6 core product flows with 1-tap certainty regardless of ambient venue noise.
   5. Embedded Paytm Soundbox simulator renders and plays authentic vernacular audio chimes upon receiving payment webhook notifications.
-**Plans**: TBD
+**Plans**: 3 plans in 3 waves
 **UI hint**: yes
+
+Plans:
+**Wave 1**
+- [ ] 05-01-PLAN.md — Frontend Scaffold, Paytm Mobile Shell (#002970/#00BAF2, max-w-[430px]), Typed KiranaOS API Client, Soundbox Audio Simulator, and Reusable "Why am I seeing this?" Evidence Drawer
+
+**Wave 2** *(blocked on Wave 1 completion)*
+- [ ] 05-02-PLAN.md — Tab 1 (Munim Mic & Live Khata) & Tab 2 (AI CFO: Demo + Custom Bill Scanner, +7.58% Price Creep Alert, Settlement Waterfall, Unmatched UPI Queue)
+
+**Wave 3** *(blocked on Wave 1 & Wave 2 completion)*
+- [ ] 05-03-PLAN.md — Tab 3 (AI CMO: Boli-Baki Recovery + Soundbox Chime, Break-Even Studio, 60s Diwali Ritual, Demo + Custom Bahi-Khata Scanner), Tab 4 (Memory Timeline), Collapsible 6-Chip Judge Demo Bar, and Full-Stack Integration Verification
 
 ## Progress
 
@@ -124,4 +134,4 @@ Plans:
 | 2. Core Voice & Multimodal Gateway | 2/2 | Complete    | 2026-11-10 |
 | 3. AI CFO — Margin Defense & Settlement Reconciliation | 3/3 | Complete    | 2026-11-11 |
 | 4. AI CMO — Boli-Baki Recovery, Break-Even Studio & Closing Ritual | 3/3 | Complete | 2026-11-11 |
-| 5. Authentic Paytm Mobile UI & Judge Quick-Trigger Command Bar | 0/TBD | Not started | - |
+| 5. Authentic Paytm Mobile UI & Judge Quick-Trigger Command Bar | 0/3 | Planned | - |
