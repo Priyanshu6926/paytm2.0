@@ -91,11 +91,11 @@ Plans:
   5. Campaign performance tracks click and payment conversion metrics partitioned by Hindi and Marathi links.
   6. Merchant can trigger the 60-Second Dukaan Closing Ritual to hear spoken net settlement, recovered udhaar, and a deterministic $3.5\times$ Diwali festive restock forecast.
   7. Physical bahi-khata notebook photos parse via multimodal OCR into batch credit proposals for 1-tap merchant onboarding.
-**Plans**: 3 plans
+**Plans**: 1/3 plans executed
 
 Plans:
 **Wave 1**
-- [ ] 04-01-PLAN.md — Deterministic CMO & Festive Restock Engines + Handwritten Bahi-Khata OCR Service
+- [x] 04-01-PLAN.md — Deterministic CMO & Festive Restock Engines + Handwritten Bahi-Khata OCR Service
 
 **Wave 2** *(blocked on Wave 1 completion)*
 - [ ] 04-02-PLAN.md — AI CMO Router: Boli-Baki Voice Recovery, Soundbox Webhook & Break-Even Studio Attribution
@@ -123,5 +123,5 @@ Plans:
 | 1. KiranaOS Deterministic Memory & Store Engine | 3/3 | Complete    | 2026-11-09 |
 | 2. Core Voice & Multimodal Gateway | 2/2 | Complete    | 2026-11-10 |
 | 3. AI CFO — Margin Defense & Settlement Reconciliation | 3/3 | Complete    | 2026-11-11 |
-| 4. AI CMO — Boli-Baki Recovery, Break-Even Studio & Closing Ritual | 0/3 | Planned | - |
+| 4. AI CMO — Boli-Baki Recovery, Break-Even Studio & Closing Ritual | 1/3 | In Progress | - |
 | 5. Authentic Paytm Mobile UI & Judge Quick-Trigger Command Bar | 0/TBD | Not started | - |

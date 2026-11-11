@@ -5,15 +5,16 @@ milestone_name: MVP
 current_phase: 4
 current_phase_name: AI CMO — Boli-Baki Recovery, Break-Even Studio & Closing Ritual
 status: executing
-stopped_at: Phase 3 complete and verified, ready to plan Phase 4
-last_updated: "2026-11-11T01:32:00.000Z"
+stopped_at: Completed 04-01-PLAN.md
+last_updated: "2026-11-11T17:04:24.040Z"
 last_activity: 2026-11-11
 last_activity_desc: Phase 3 complete and verified (5/5), ready to plan Phase 4
+state_head: 36fc4d8093cd1d55cd465b0557e281dc6f843cf0
 progress:
   total_phases: 5
   completed_phases: 3
-  total_plans: 8
-  completed_plans: 8
+  total_plans: 11
+  completed_plans: 9
 ---
 
 # Project State
@@ -27,10 +28,11 @@ See: .planning/PROJECT.md (updated 2026-11-09)
 
 ## Current Position
 
-Phase: 4 (AI CMO — Boli-Baki Recovery, Break-Even Studio & Closing Ritual) — READY TO PLAN
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-11-11 — Phase 3 complete and verified (5/5), transitioned to Phase 4
+Phase: 4 (AI CMO — Boli-Baki Recovery, Break-Even Studio & Closing Ritual) — EXECUTING
+Current Plan: 2
+Total Plans in Phase: 3
+Status: In progress (04-01 complete, ready for 04-02)
+Last activity: 2026-11-11 — Completed 04-01-PLAN.md
 
 Progress: [██████░░░░] 60%
 
@@ -58,6 +60,11 @@ Progress: [██████░░░░] 60%
 - Trend: Stable
 
 *Updated after each plan completion*
+**Per-Plan Metrics:**
+
+| Plan | Duration | Tasks | Files |
+|------|----------|-------|-------|
+| Phase 04 P01 | 4 min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -69,6 +76,8 @@ Recent decisions affecting current work:
 - [Init]: Zero LLM Math — all financial calculations executed in deterministic Python.
 - [Init]: Append-Only SQLite — zero UPDATE/DELETE operations on financial and stock ledgers.
 - [Init]: Law of Demo-Day Survivability — 6s external API timeouts with instant local mock fallbacks.
+- [Phase 04]: CMO break-even guardrail blocks M_new <= 0 with OFFER_BLOCKED_LOSS_MAKING; festive restock forecast uses pure Python math.ceil; ledger helpers accept commit=False for atomic batch writes.
+- [Phase 04]: bahi_khata_parser_service uses 6.0s timeout, 10MB cap, Marathi/Hindi demo fallback, and non-mutating customer match classification.
 
 ### Pending Todos
 
@@ -88,6 +97,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-09 22:15
-Stopped at: Phase 2 complete, ready to plan Phase 3
+Last session: 2026-11-11T17:04:23.965Z
+Stopped at: Completed 04-01-PLAN.md
 Resume file: None
