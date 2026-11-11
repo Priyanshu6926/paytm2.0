@@ -6,16 +6,16 @@ current_phase: 4
 current_phase_name: AI CMO — Boli-Baki Recovery, Break-Even Studio & Closing Ritual
 current_plan: 3
 status: executing
-stopped_at: Completed 04-02-PLAN.md
-last_updated: "2026-11-11T17:09:44.598Z"
+stopped_at: Completed 04-03-PLAN.md
+last_updated: "2026-11-11T17:14:28.604Z"
 last_activity: 2026-11-11
 last_activity_desc: Phase 3 complete and verified (5/5), ready to plan Phase 4
-state_head: e1eddd40217f563e7744a95ffad112c655c2e11c
+state_head: 0592b2e7351c5f0925fe6803f710dad02e69e883
 progress:
   total_phases: 5
   completed_phases: 3
   total_plans: 11
-  completed_plans: 10
+  completed_plans: 11
 ---
 
 # Project State
@@ -67,6 +67,7 @@ Progress: [██████░░░░] 60%
 |------|----------|-------|-------|
 | Phase 04 P01 | 4 min | 2 tasks | 3 files |
 | Phase 04 P02 | 4 min | 2 tasks | 3 files |
+| Phase 04 P03 | 4m | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -81,6 +82,8 @@ Recent decisions affecting current work:
 - [Phase 04]: CMO break-even guardrail blocks M_new <= 0 with OFFER_BLOCKED_LOSS_MAKING; festive restock forecast uses pure Python math.ceil; ledger helpers accept commit=False for atomic batch writes.
 - [Phase 04]: bahi_khata_parser_service uses 6.0s timeout, 10MB cap, Marathi/Hindi demo fallback, and non-mutating customer match classification.
 - [Phase 04]: cmo_router enforces dual idempotency on PAID links and provider_ref, localized offline fallback templates, and preserves dead-stock click/conversion metrics across re-calls.
+- [Phase 04]: Anchored today_qr_sales on Rs 6,450.00 daily Paytm QR baseline plus live confirmed PAYTM_QR repayments recorded today.
+- [Phase 04]: Enforced strict ambiguity rejection (HTTP 400 + full transaction rollback) when confirm-bahi-khata matches multiple customers without explicit customer_id.
 
 ### Pending Todos
 
@@ -100,6 +103,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-11T17:09:44.536Z
-Stopped at: Completed 04-02-PLAN.md
+Last session: 2026-11-11T17:14:28.540Z
+Stopped at: Completed 04-03-PLAN.md
 Resume file: None
