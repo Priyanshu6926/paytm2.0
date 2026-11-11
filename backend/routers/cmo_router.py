@@ -6,16 +6,18 @@ and Dead-Stock Break-Even Studio per PRD §5.4, §7.4, §7.5, and Threat Models 
 
 from datetime import datetime
 import logging
+import math
 import re
 import uuid
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException, status
-from pydantic import BaseModel
+from fastapi import APIRouter, Body, HTTPException, Query, status
+from pydantic import BaseModel, Field
 
 from backend.database.connection import close_db_connection, get_db_connection
 from backend.services.deterministic_engine import (
     add_repayment_entry,
+    calculate_breakeven_offer,
     calculate_customer_balance,
     log_business_event,
 )
@@ -34,6 +36,16 @@ router = APIRouter(prefix="/api/v1/cmo", tags=["AI CMO"])
 class BoliBakiRequest(BaseModel):
     customer_id: int
     target_language: Optional[str] = None
+
+
+class DeadStockCampaignRequest(BaseModel):
+    item_id: int
+    proposed_discount_rupees: float = Field(..., ge=0)
+    usual_daily_sales: Optional[int] = Field(None, gt=0)
+
+
+class SimulatePromoClickRequest(BaseModel):
+    converted: Optional[bool] = None
 
 
 # --------------------------------------------------------------------------
@@ -90,6 +102,68 @@ def _strip_paytm_prefix(paytm_link_slug: str) -> str:
     if paytm_link_slug.startswith(prefix):
         return paytm_link_slug[len(prefix):]
     return paytm_link_slug
+
+
+def _derive_sku_slug_token(sku_name: str, item_id: int) -> str:
+    """
+    Extracts a concise lowercase slug token for promo links (e.g., 'bhujia' for
+    'Haldiram Aloo Bhujia 400g').
+    """
+    tokens = re.findall(r"[a-zA-Z0-9]+", sku_name or "")
+    # Filter out trailing packaging size tokens such as 400g, 1L, 70g, 500ml, 1kg
+    word_tokens = [
+        t.lower()
+        for t in tokens
+        if not re.fullmatch(r"\d+(?:g|kg|ml|l|pcs|pkts?)?", t.lower())
+    ]
+    if word_tokens:
+        return word_tokens[-1]
+    return f"item-{item_id}"
+
+
+def _format_attributed_link(row: Any) -> Dict[str, Any]:
+    """Shapes a campaigns_and_links row into the PRD §7.5 attributed link object."""
+    short_slug = _strip_paytm_prefix(row["paytm_link_slug"])
+    conversions = int(row["conversions"] or 0)
+    revenue = round(float(row["revenue_collected"] or 0.0), 2)
+    return {
+        "language": row["language_code"],
+        "link": row["paytm_link_slug"],
+        "slug": short_slug,
+        "clicks": int(row["clicks"] or 0),
+        "redemptions": conversions,
+        "conversions": conversions,
+        "revenue": revenue,
+        "revenue_collected": revenue,
+        "message_text": row["message_text"] or "",
+        "simulate_click_endpoint": f"/api/v1/cmo/simulate-promo-click/{short_slug}",
+    }
+
+
+def _format_promo_offer_text(
+    sku_name: str, discounted_price: float, discount_rupees: float, lang: str
+) -> str:
+    """Translates or formats a localized dead-stock promo offer message."""
+    disc_disp = _format_amount_disp(discounted_price)
+    save_disp = _format_amount_disp(discount_rupees)
+    source_msg = (
+        f"Special offer! {sku_name} ab sirf Rs {disc_disp} mein "
+        f"(Rs {save_disp} ki bachat)."
+    )
+    trans_res = translate_text(
+        text=source_msg,
+        source_language_code="hi-IN",
+        target_language_code=lang,
+    )
+    raw = trans_res.get("translated_text", source_msg)
+    if raw.startswith(f"[{lang}]"):
+        if lang == "mr-IN":
+            return (
+                f"Khas offer! {sku_name} aata fakt Rs {disc_disp} madhe "
+                f"(Rs {save_disp} bachat)."
+            )
+        return source_msg
+    return raw
 
 
 # --------------------------------------------------------------------------
@@ -479,6 +553,396 @@ def simulate_link_paid(slug: str):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to process simulated link payment.",
+        )
+    finally:
+        close_db_connection(conn)
+
+
+# --------------------------------------------------------------------------
+# 2. Dead-Stock Break-Even Studio & Per-Language Attribution (PRD §7.5)
+# --------------------------------------------------------------------------
+
+
+@router.get("/dead-stock")
+def get_dead_stock():
+    """
+    Lists inventory items unsold > 15 days with current_stock > 0, including
+    deterministic unit margin and any existing per-language DEAD_STOCK_BUNDLE links.
+    """
+    conn = get_db_connection()
+    try:
+        rows = conn.execute(
+            """
+            SELECT id, sku_name, category, current_stock, unit, last_unit_cost,
+                   selling_price, avg_daily_burn, supplier_name, last_sold_at
+            FROM inventory_items
+            WHERE current_stock > 0 AND last_sold_at IS NOT NULL;
+            """
+        ).fetchall()
+
+        dead_stock_items: List[Dict[str, Any]] = []
+        for item in rows:
+            days_unsold = _compute_days_since(item["last_sold_at"])
+            if days_unsold <= 15:
+                continue
+
+            unit_cost = round(float(item["last_unit_cost"]), 2)
+            selling_price = round(float(item["selling_price"]), 2)
+            current_margin = round(selling_price - unit_cost, 2)
+            campaign_title = f"Dead-Stock Promo: {item['sku_name']}"
+
+            link_rows = conn.execute(
+                """
+                SELECT * FROM campaigns_and_links
+                WHERE campaign_type = 'DEAD_STOCK_BUNDLE' AND campaign_title = ?
+                ORDER BY CASE WHEN language_code = 'mr-IN' THEN 0 ELSE 1 END, id ASC;
+                """,
+                (campaign_title,),
+            ).fetchall()
+
+            dead_stock_items.append(
+                {
+                    "item_id": item["id"],
+                    "sku_name": item["sku_name"],
+                    "category": item["category"],
+                    "current_stock": int(item["current_stock"]),
+                    "unit": item["unit"],
+                    "unit_cost": unit_cost,
+                    "selling_price": selling_price,
+                    "current_margin_per_unit": current_margin,
+                    "days_unsold": days_unsold,
+                    "last_sold_at": item["last_sold_at"],
+                    "supplier_name": item["supplier_name"],
+                    "attributed_links": [_format_attributed_link(r) for r in link_rows],
+                }
+            )
+
+        dead_stock_items.sort(key=lambda x: x["days_unsold"], reverse=True)
+        return {
+            "dead_stock_items": dead_stock_items,
+            "count": len(dead_stock_items),
+        }
+    finally:
+        close_db_connection(conn)
+
+
+@router.post("/dead-stock-campaign")
+def create_dead_stock_campaign(req: DeadStockCampaignRequest):
+    """
+    Validates proposed dead-stock discount against wholesale unit_cost via deterministic
+    calculate_breakeven_offer. Blocks loss-making discounts with OFFER_BLOCKED_LOSS_MAKING,
+    or creates/updates idempotent mr-IN and hi-IN promo links preserving click/conversion metrics.
+    """
+    if not math.isfinite(req.proposed_discount_rupees):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="proposed_discount_rupees must be finite.",
+        )
+
+    conn = get_db_connection()
+    try:
+        item = conn.execute(
+            "SELECT * FROM inventory_items WHERE id = ?;", (req.item_id,)
+        ).fetchone()
+        if item is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Inventory item #{req.item_id} not found.",
+            )
+
+        unit_cost = round(float(item["last_unit_cost"]), 2)
+        selling_price = round(float(item["selling_price"]), 2)
+        days_unsold = _compute_days_since(item["last_sold_at"])
+
+        if req.usual_daily_sales is not None:
+            base_daily_sales = int(req.usual_daily_sales)
+        elif float(item["avg_daily_burn"] or 0) >= 1:
+            base_daily_sales = int(item["avg_daily_burn"])
+        else:
+            base_daily_sales = 4
+
+        calc = calculate_breakeven_offer(
+            unit_cost=unit_cost,
+            selling_price=selling_price,
+            usual_daily_volume=base_daily_sales,
+            proposed_discount=req.proposed_discount_rupees,
+            sku_name=item["sku_name"],
+        )
+
+        math_audit = {
+            "old_margin_per_unit": calc["old_margin_per_unit"],
+            "new_margin_per_unit": calc["new_margin_per_unit"],
+            "usual_daily_sales": calc["usual_daily_sales"],
+            "breakeven_daily_sales_needed": calc["breakeven_daily_sales_needed"],
+            "extra_units_needed_per_day": calc["extra_units_needed_per_day"],
+            "verdict": calc["verdict"],
+        }
+
+        if calc["status"] == "OFFER_BLOCKED_LOSS_MAKING":
+            log_business_event(
+                conn=conn,
+                event_category="CMO_GROWTH",
+                summary_text=(
+                    f"Blocked loss-making promo on {item['sku_name']}: "
+                    f"Rs {_format_amount_disp(req.proposed_discount_rupees)} discount violates wholesale cost Rs {unit_cost:g}"
+                ),
+                evidence={
+                    "status": "OFFER_BLOCKED_LOSS_MAKING",
+                    "item_id": item["id"],
+                    "sku_name": item["sku_name"],
+                    "unit_cost": unit_cost,
+                    "selling_price": selling_price,
+                    "proposed_discount": req.proposed_discount_rupees,
+                    "math_audit": math_audit,
+                    "reason": calc["reason"],
+                },
+                actor="SYSTEM_GUARD",
+                commit=True,
+            )
+            return {
+                "status": "OFFER_BLOCKED_LOSS_MAKING",
+                "allowed": False,
+                "item_id": item["id"],
+                "sku_name": item["sku_name"],
+                "days_unsold": days_unsold,
+                "current_stock": int(item["current_stock"]),
+                "unit_cost": unit_cost,
+                "selling_price": selling_price,
+                "proposed_discount": round(float(req.proposed_discount_rupees), 2),
+                "reason": calc["reason"],
+                "math_audit": math_audit,
+                "attributed_links": [],
+            }
+
+        discounted_price = calc["discounted_price"]
+        campaign_title = f"Dead-Stock Promo: {item['sku_name']}"
+        sku_token = _derive_sku_slug_token(item["sku_name"], item["id"])
+
+        conn.execute("BEGIN TRANSACTION;")
+        target_langs = [("mr-IN", "mr"), ("hi-IN", "hi")]
+        for lang_code, lang_short in target_langs:
+            candidate_slug = f"paytm.me/promo-{lang_short}-{sku_token}"
+            existing_row = conn.execute(
+                "SELECT * FROM campaigns_and_links WHERE paytm_link_slug = ?;",
+                (candidate_slug,),
+            ).fetchone()
+
+            if existing_row is not None and existing_row["campaign_title"] != campaign_title:
+                candidate_slug = f"paytm.me/promo-{lang_short}-{sku_token}-{item['id']}"
+                existing_row = conn.execute(
+                    "SELECT * FROM campaigns_and_links WHERE paytm_link_slug = ?;",
+                    (candidate_slug,),
+                ).fetchone()
+
+            localized_offer = _format_promo_offer_text(
+                sku_name=item["sku_name"],
+                discounted_price=discounted_price,
+                discount_rupees=req.proposed_discount_rupees,
+                lang=lang_code,
+            )
+
+            if existing_row is not None:
+                # Preserve existing clicks, conversions, and revenue_collected across re-calls
+                conn.execute(
+                    """
+                    UPDATE campaigns_and_links
+                    SET amount_expected = ?,
+                        discount_per_unit = ?,
+                        breakeven_extra_units = ?,
+                        message_text = ?
+                    WHERE id = ?;
+                    """,
+                    (
+                        discounted_price,
+                        round(float(req.proposed_discount_rupees), 2),
+                        int(calc["extra_units_needed_per_day"] or 0),
+                        localized_offer,
+                        existing_row["id"],
+                    ),
+                )
+            else:
+                conn.execute(
+                    """
+                    INSERT INTO campaigns_and_links (
+                        campaign_title, campaign_type, target_customer_id, language_code,
+                        paytm_link_slug, amount_expected, discount_per_unit, breakeven_extra_units,
+                        message_text, tts_audio_base64, clicks, conversions, revenue_collected, status
+                    ) VALUES (?, 'DEAD_STOCK_BUNDLE', NULL, ?, ?, ?, ?, ?, ?, NULL, 0, 0, 0.0, 'SENT');
+                    """,
+                    (
+                        campaign_title,
+                        lang_code,
+                        candidate_slug,
+                        discounted_price,
+                        round(float(req.proposed_discount_rupees), 2),
+                        int(calc["extra_units_needed_per_day"] or 0),
+                        localized_offer,
+                    ),
+                )
+
+        link_rows = conn.execute(
+            """
+            SELECT * FROM campaigns_and_links
+            WHERE campaign_type = 'DEAD_STOCK_BUNDLE' AND campaign_title = ?
+            ORDER BY CASE WHEN language_code = 'mr-IN' THEN 0 ELSE 1 END, id ASC;
+            """,
+            (campaign_title,),
+        ).fetchall()
+        attributed_links = [_format_attributed_link(r) for r in link_rows]
+
+        log_business_event(
+            conn=conn,
+            event_category="CMO_GROWTH",
+            summary_text=(
+                f"Break-even verified for {item['sku_name']}: "
+                f"Rs {_format_amount_disp(req.proposed_discount_rupees)} off requires "
+                f"{calc['breakeven_daily_sales_needed']} units/day ({calc['verdict']})"
+            ),
+            evidence={
+                "status": "CAMPAIGN_READY",
+                "item_id": item["id"],
+                "sku_name": item["sku_name"],
+                "math_audit": math_audit,
+                "links": [lnk["link"] for lnk in attributed_links],
+            },
+            actor="MERCHANT_APPROVED",
+            commit=False,
+        )
+        conn.commit()
+
+        return {
+            "status": "CAMPAIGN_READY",
+            "allowed": True,
+            "item_id": item["id"],
+            "sku_name": item["sku_name"],
+            "days_unsold": days_unsold,
+            "current_stock": int(item["current_stock"]),
+            "unit_cost": unit_cost,
+            "selling_price": selling_price,
+            "proposed_discount": round(float(req.proposed_discount_rupees), 2),
+            "discounted_price": discounted_price,
+            "math_audit": math_audit,
+            "attributed_links": attributed_links,
+        }
+    except HTTPException:
+        conn.rollback()
+        raise
+    except Exception as exc:
+        conn.rollback()
+        logger.error("Failed to create dead-stock campaign: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to process dead-stock campaign.",
+        )
+    finally:
+        close_db_connection(conn)
+
+
+@router.post("/simulate-promo-click/{slug}")
+def simulate_promo_click(
+    slug: str,
+    converted: bool = Query(True),
+    payload: Optional[SimulatePromoClickRequest] = Body(None),
+):
+    """
+    Increments clicks, and optionally conversions + revenue_collected, for a tracked
+    promo link (mr-IN or hi-IN) and returns the updated per-language attribution breakdown.
+    """
+    is_converted = (
+        payload.converted
+        if payload is not None and payload.converted is not None
+        else converted
+    )
+    conn = get_db_connection()
+    try:
+        normalized_slug = _strip_paytm_prefix(slug.strip())
+        campaign = conn.execute(
+            """
+            SELECT * FROM campaigns_and_links
+            WHERE paytm_link_slug = ? OR paytm_link_slug = ?;
+            """,
+            (slug, f"paytm.me/{normalized_slug}"),
+        ).fetchone()
+
+        if campaign is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Promo link '{slug}' not found.",
+            )
+
+        unit_revenue = round(float(campaign["amount_expected"] or 0.0), 2) if is_converted else 0.0
+        conv_delta = 1 if is_converted else 0
+
+        conn.execute("BEGIN TRANSACTION;")
+        conn.execute(
+            """
+            UPDATE campaigns_and_links
+            SET clicks = clicks + 1,
+                conversions = conversions + ?,
+                revenue_collected = ROUND(revenue_collected + ?, 2)
+            WHERE id = ?;
+            """,
+            (conv_delta, unit_revenue, campaign["id"]),
+        )
+
+        updated = conn.execute(
+            "SELECT * FROM campaigns_and_links WHERE id = ?;", (campaign["id"],)
+        ).fetchone()
+
+        sibling_rows = conn.execute(
+            """
+            SELECT * FROM campaigns_and_links
+            WHERE campaign_type = ? AND campaign_title = ?
+            ORDER BY CASE WHEN language_code = 'mr-IN' THEN 0 ELSE 1 END, id ASC;
+            """,
+            (updated["campaign_type"], updated["campaign_title"]),
+        ).fetchall()
+
+        biz_event_id = log_business_event(
+            conn=conn,
+            event_category="CMO_GROWTH",
+            summary_text=(
+                f"Promo link {updated['paytm_link_slug']} ({updated['language_code']}) "
+                f"recorded {'conversion' if is_converted else 'click'} "
+                f"(clicks={updated['clicks']}, conversions={updated['conversions']}, "
+                f"revenue=Rs {float(updated['revenue_collected']):.2f})"
+            ),
+            evidence={
+                "campaign_id": updated["id"],
+                "slug": normalized_slug,
+                "language": updated["language_code"],
+                "converted": is_converted,
+                "clicks": int(updated["clicks"]),
+                "conversions": int(updated["conversions"]),
+                "revenue_collected": round(float(updated["revenue_collected"]), 2),
+            },
+            actor="SYSTEM_AUTO",
+            commit=False,
+        )
+        conn.commit()
+
+        return {
+            "status": "RECORDED",
+            "slug": normalized_slug,
+            "link": updated["paytm_link_slug"],
+            "language": updated["language_code"],
+            "converted": is_converted,
+            "clicks": int(updated["clicks"]),
+            "conversions": int(updated["conversions"]),
+            "redemptions": int(updated["conversions"]),
+            "revenue_collected": round(float(updated["revenue_collected"]), 2),
+            "business_event_id": biz_event_id,
+            "language_breakdown": [_format_attributed_link(r) for r in sibling_rows],
+        }
+    except HTTPException:
+        conn.rollback()
+        raise
+    except Exception as exc:
+        conn.rollback()
+        logger.error("Failed to simulate promo click: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to record promo click attribution.",
         )
     finally:
         close_db_connection(conn)

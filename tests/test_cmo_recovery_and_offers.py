@@ -208,3 +208,251 @@ def test_simulate_link_paid_idempotency(client_with_db):
     ).fetchone()
     assert repayments["cnt"] == 1
     close_db_connection(conn)
+
+
+# -----------------------------------------------------------------------------
+# 2. Dead-Stock Break-Even Studio & Per-Language Attribution Tests (CMO-04, CMO-05)
+# -----------------------------------------------------------------------------
+
+
+def test_dead_stock_query(client_with_db):
+    """
+    Test 1 (Dead stock query):
+    GET /api/v1/cmo/dead-stock returns Haldiram Aloo Bhujia 400g (unsold 22 days > 15 days,
+    stock 28, unit_cost 72.0, selling_price 95.0) and excludes recently sold items like
+    Amul Pure Ghee 1L or Maggi Masala 70g.
+    """
+    client, _ = client_with_db
+    response = client.get("/api/v1/cmo/dead-stock")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["count"] == 1
+    assert len(data["dead_stock_items"]) == 1
+
+    item = data["dead_stock_items"][0]
+    assert item["sku_name"] == "Haldiram Aloo Bhujia 400g"
+    assert item["days_unsold"] >= 22
+    assert item["current_stock"] == 28
+    assert item["unit_cost"] == 72.0
+    assert item["selling_price"] == 95.0
+    assert item["current_margin_per_unit"] == 23.0
+
+
+@pytest.mark.parametrize("discount", [23.0, 25.0])
+def test_dead_stock_campaign_loss_making_blocked(client_with_db, discount):
+    """
+    Test 2 (Loss-making offer blocked):
+    POST /api/v1/cmo/dead-stock-campaign with item_id=3 and proposed_discount_rupees >= 23.0
+    returns status="OFFER_BLOCKED_LOSS_MAKING", allowed=False, creates zero rows in
+    campaigns_and_links, and logs a CMO_GROWTH guard event.
+    """
+    client, db_path = client_with_db
+    conn = get_db_connection(db_path)
+    bhujia = conn.execute(
+        "SELECT id FROM inventory_items WHERE sku_name = 'Haldiram Aloo Bhujia 400g';"
+    ).fetchone()
+    before_campaigns = conn.execute(
+        "SELECT COUNT(*) AS cnt FROM campaigns_and_links WHERE campaign_type = 'DEAD_STOCK_BUNDLE';"
+    ).fetchone()["cnt"]
+    close_db_connection(conn)
+
+    response = client.post(
+        "/api/v1/cmo/dead-stock-campaign",
+        json={"item_id": bhujia["id"], "proposed_discount_rupees": discount},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "OFFER_BLOCKED_LOSS_MAKING"
+    assert data["allowed"] is False
+    assert data["attributed_links"] == []
+    assert "72" in data["reason"]
+
+    conn = get_db_connection(db_path)
+    after_campaigns = conn.execute(
+        "SELECT COUNT(*) AS cnt FROM campaigns_and_links WHERE campaign_type = 'DEAD_STOCK_BUNDLE';"
+    ).fetchone()["cnt"]
+    assert after_campaigns == before_campaigns == 0
+
+    guard_event = conn.execute(
+        """
+        SELECT * FROM business_events
+        WHERE event_category = 'CMO_GROWTH' AND actor = 'SYSTEM_GUARD'
+        ORDER BY id DESC LIMIT 1;
+        """
+    ).fetchone()
+    assert guard_event is not None
+    assert "OFFER_BLOCKED_LOSS_MAKING" in guard_event["evidence_json"]
+    close_db_connection(conn)
+
+
+def test_dead_stock_campaign_safe_breakeven_and_idempotency(client_with_db):
+    """
+    Test 3 (Safe break-even campaign + attribution links):
+    POST /api/v1/cmo/dead-stock-campaign with item_id=3 and proposed_discount_rupees=10.0
+    returns math_audit matching PRD §7.5 and two attributed_links (mr-IN and hi-IN).
+    Re-calling the endpoint preserves existing click/conversion totals rather than resetting them.
+    """
+    client, db_path = client_with_db
+    conn = get_db_connection(db_path)
+    bhujia = conn.execute(
+        "SELECT id FROM inventory_items WHERE sku_name = 'Haldiram Aloo Bhujia 400g';"
+    ).fetchone()
+    close_db_connection(conn)
+
+    response = client.post(
+        "/api/v1/cmo/dead-stock-campaign",
+        json={"item_id": bhujia["id"], "proposed_discount_rupees": 10.0},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "CAMPAIGN_READY"
+    assert data["allowed"] is True
+    assert data["sku_name"] == "Haldiram Aloo Bhujia 400g"
+    assert data["days_unsold"] >= 22
+    assert data["current_stock"] == 28
+    assert data["unit_cost"] == 72.0
+    assert data["selling_price"] == 95.0
+    assert data["proposed_discount"] == 10.0
+    assert data["discounted_price"] == 85.0
+
+    audit = data["math_audit"]
+    assert audit["old_margin_per_unit"] == 23.0
+    assert audit["new_margin_per_unit"] == 13.0
+    assert audit["usual_daily_sales"] == 4
+    assert audit["breakeven_daily_sales_needed"] == 8
+    assert audit["extra_units_needed_per_day"] == 4
+    assert audit["verdict"] == "PROFITABLE_IF_VOLUME_DOUBLES"
+
+    links = {lnk["language"]: lnk for lnk in data["attributed_links"]}
+    assert set(links.keys()) == {"mr-IN", "hi-IN"}
+    assert links["mr-IN"]["link"] == "paytm.me/promo-mr-bhujia"
+    assert links["hi-IN"]["link"] == "paytm.me/promo-hi-bhujia"
+    assert links["mr-IN"]["simulate_click_endpoint"] == "/api/v1/cmo/simulate-promo-click/promo-mr-bhujia"
+    assert links["hi-IN"]["simulate_click_endpoint"] == "/api/v1/cmo/simulate-promo-click/promo-hi-bhujia"
+
+    # Simulate 2 clicks/conversions on Marathi link
+    client.post("/api/v1/cmo/simulate-promo-click/promo-mr-bhujia")
+    client.post("/api/v1/cmo/simulate-promo-click/promo-mr-bhujia")
+
+    # Re-calling dead-stock-campaign must preserve existing totals
+    recalled = client.post(
+        "/api/v1/cmo/dead-stock-campaign",
+        json={"item_id": bhujia["id"], "proposed_discount_rupees": 10.0},
+    )
+    assert recalled.status_code == 200
+    recalled_links = {lnk["language"]: lnk for lnk in recalled.json()["attributed_links"]}
+    assert recalled_links["mr-IN"]["clicks"] == 2
+    assert recalled_links["mr-IN"]["redemptions"] == 2
+    assert recalled_links["mr-IN"]["revenue"] == 170.0
+    assert recalled_links["hi-IN"]["clicks"] == 0
+
+
+def test_simulate_promo_click_per_language_attribution(client_with_db):
+    """
+    Test 4 (Per-language click & conversion attribution):
+    POST /api/v1/cmo/simulate-promo-click/{slug} increments clicks, conversions, and
+    revenue_collected for the targeted language link (mr-IN vs hi-IN) independently
+    and persists across reloads.
+    """
+    client, db_path = client_with_db
+    conn = get_db_connection(db_path)
+    bhujia = conn.execute(
+        "SELECT id FROM inventory_items WHERE sku_name = 'Haldiram Aloo Bhujia 400g';"
+    ).fetchone()
+    close_db_connection(conn)
+
+    init_resp = client.post(
+        "/api/v1/cmo/dead-stock-campaign",
+        json={"item_id": bhujia["id"], "proposed_discount_rupees": 10.0},
+    )
+    assert init_resp.status_code == 200
+
+    # 3 converted clicks on mr-IN + 1 non-converted click on hi-IN + 1 converted click on hi-IN
+    for _ in range(3):
+        r_mr = client.post("/api/v1/cmo/simulate-promo-click/promo-mr-bhujia")
+        assert r_mr.status_code == 200
+
+    r_hi_click_only = client.post(
+        "/api/v1/cmo/simulate-promo-click/promo-hi-bhujia",
+        json={"converted": False},
+    )
+    assert r_hi_click_only.status_code == 200
+    r_hi_conv = client.post("/api/v1/cmo/simulate-promo-click/promo-hi-bhujia")
+    assert r_hi_conv.status_code == 200
+
+    last_data = r_hi_conv.json()
+    assert last_data["slug"] == "promo-hi-bhujia"
+    assert last_data["language"] == "hi-IN"
+    assert last_data["clicks"] == 2
+    assert last_data["conversions"] == 1
+    assert last_data["revenue_collected"] == 85.0
+
+    breakdown = {item["language"]: item for item in last_data["language_breakdown"]}
+    assert breakdown["mr-IN"]["clicks"] == 3
+    assert breakdown["mr-IN"]["conversions"] == 3
+    assert breakdown["mr-IN"]["revenue"] == 255.0
+    assert breakdown["hi-IN"]["clicks"] == 2
+    assert breakdown["hi-IN"]["conversions"] == 1
+    assert breakdown["hi-IN"]["revenue"] == 85.0
+
+    # Verify reload persistence via GET /api/v1/cmo/dead-stock
+    reload_resp = client.get("/api/v1/cmo/dead-stock")
+    assert reload_resp.status_code == 200
+    reloaded_links = {
+        lnk["language"]: lnk for lnk in reload_resp.json()["dead_stock_items"][0]["attributed_links"]
+    }
+    assert reloaded_links["mr-IN"]["clicks"] == 3
+    assert reloaded_links["mr-IN"]["redemptions"] == 3
+    assert reloaded_links["mr-IN"]["revenue"] == 255.0
+    assert reloaded_links["hi-IN"]["clicks"] == 2
+    assert reloaded_links["hi-IN"]["redemptions"] == 1
+    assert reloaded_links["hi-IN"]["revenue"] == 85.0
+
+
+def test_cmo_validation_and_error_guards(client_with_db):
+    """
+    Validates T-04-05 and T-04-06 input validation & 404/400/422 guards:
+      - Negative proposed_discount_rupees rejected with HTTP 422.
+      - Unknown customer_id, item_id, and slug return HTTP 404 without SQL leaks.
+      - Zero-balance customer (Priya Deshmukh) rejected with HTTP 400.
+    """
+    client, db_path = client_with_db
+
+    # Negative discount -> 422
+    neg_resp = client.post(
+        "/api/v1/cmo/dead-stock-campaign",
+        json={"item_id": 3, "proposed_discount_rupees": -5.0},
+    )
+    assert neg_resp.status_code == 422
+
+    # Unknown IDs/slugs -> 404
+    assert (
+        client.post("/api/v1/cmo/boli-baki-recovery", json={"customer_id": 9999}).status_code
+        == 404
+    )
+    assert (
+        client.post(
+            "/api/v1/cmo/dead-stock-campaign",
+            json={"item_id": 9999, "proposed_discount_rupees": 5.0},
+        ).status_code
+        == 404
+    )
+    assert client.post("/api/v1/cmo/simulate-link-paid/nonexistent-slug").status_code == 404
+    assert client.post("/api/v1/cmo/simulate-promo-click/nonexistent-slug").status_code == 404
+
+    # Zero-balance customer -> 400
+    conn = get_db_connection(db_path)
+    priya = conn.execute(
+        "SELECT id FROM customers WHERE name = 'Priya Deshmukh';"
+    ).fetchone()
+    close_db_connection(conn)
+    zero_resp = client.post(
+        "/api/v1/cmo/boli-baki-recovery",
+        json={"customer_id": priya["id"]},
+    )
+    assert zero_resp.status_code == 400
+
+
