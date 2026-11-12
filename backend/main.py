@@ -7,6 +7,11 @@ Adheres to PRD §2, §6, D-05, and Threat Model T-01-SC.
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
+from dotenv import load_dotenv
+
+# Load local environment variables from .env if present
+load_dotenv()
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
